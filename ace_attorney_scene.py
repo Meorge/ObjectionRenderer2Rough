@@ -42,7 +42,7 @@ class NameBox(SceneObject):
 
         self.font = ImageFont.truetype("ace-name/ace-name.ttf", size=8)
         self.namebox_text.font = self.font
-        self.set_text("Gumshoe")
+        self.set_text("Phoenix")
     
     def set_text(self, text: str):
         self.text = text
@@ -58,6 +58,7 @@ class DialogueBox(SceneObject):
         super().__init__(parent, (0, 128, 12))
         self.bg = ImageObject(parent=self, pos=(0, 0, 10), filepath="mainbox.png")
         self.namebox = NameBox(parent=self, pos=(1, -11, 0))
+        self.arrow = ImageObject(parent=self, pos=(256 - 9 - 6, 48, 11), filepath="arrow.png")
 
         self.page: DialoguePage = None
 
@@ -107,12 +108,6 @@ class DialogueBox(SceneObject):
 
 
 textbox = DialogueBox(parent=root)
-# dialogue_text = SimpleTextObject(
-#     parent=textbox,
-#     pos=(8,4,10),
-#     text="Hello my name is Phoenix",
-#     font=ImageFont.truetype("igiari-cyrillic/igiari-cyrillic.ttf", size=16)
-# )
 
 my_scene = Scene(256, 192, root)
 
@@ -120,7 +115,7 @@ DURATION = 10
 FRAMES_PER_SECOND = 30
 
 
-raw_text = "Now, the victim entered Studio One at approximately <red>1:00 PM</red>."
+raw_text = "Hi here's a bunch of text also maybe the rich text is breaking again??? if so yay cool great"
 text_boxes = get_rich_boxes(raw_text)
 textbox.set_page(text_boxes[0])
 print(text_boxes)
