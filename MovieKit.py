@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import ffmpeg
 from math_helpers import lerp
 from typing import Callable
@@ -159,8 +159,29 @@ class ImageObject(SceneObject):
             resized = current_frame.resize((w, h))
         img.paste(resized, box, mask=resized)
 
-class SoundObject(SceneObject):
-    __filepath: str = ""
+class SimpleTextObject(SceneObject):
+    def __init__(self, parent: 'SceneObject' = None, pos: tuple[int, int, int] = (0,0,0), \
+        text: str = "", font: ImageFont.FreeTypeFont = None):
+        super().__init__(parent, pos)
+        self.text = text
+        self.font = font
+
+    def get_width(self):
+        if self.font is not None:
+            return self.font.getlength(self.text)
+
+    def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
+        x, y, _ = self.get_absolute_position()
+
+        args = {
+            "xy": (x,y),
+            "text": self.text,
+            "fill": (255,255,255)
+        }
+
+        if self.font is not None:
+            args["font"] = self.font
+        ctx.text(**args)
 
 class Sequencer:
     actions: list['SequenceAction'] = []
