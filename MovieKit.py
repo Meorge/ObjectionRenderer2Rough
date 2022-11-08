@@ -66,6 +66,12 @@ class SceneObject:
     def set_y(self, y: int):
         self.y = int(y)
 
+    def show(self):
+        self.visible = True
+
+    def hide(self):
+        self.visible = False
+
     def add_child(self, new_child: 'SceneObject'):
         self.__children.append(new_child)
         if new_child.__parent is not None:
@@ -322,4 +328,14 @@ class SetImageObjectSpriteAction(SequenceAction):
 
     def update(self, delta):
         self.image_object.set_filepath(self.new_filepath)
+        self.sequencer.action_finished()
+
+class RunFunctionAction(SequenceAction):
+    func: Callable[[], None] = None
+
+    def __init__(self, func: Callable[[], None]):
+        self.func = func
+
+    def update(self, delta):
+        self.func()
         self.sequencer.action_finished()

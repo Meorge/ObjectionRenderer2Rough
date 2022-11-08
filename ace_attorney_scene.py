@@ -1,6 +1,6 @@
 from MovieKit import Scene, SceneObject, ImageObject, MoveSceneObjectAction, \
     Sequencer, SetSceneObjectPositionAction, WaitAction, SetImageObjectSpriteAction, \
-        SimpleTextObject, SequenceAction
+        SimpleTextObject, SequenceAction, RunFunctionAction
 import ffmpeg
 from math_helpers import ease_in_out_cubic
 from PIL import Image, ImageDraw, ImageFont
@@ -81,12 +81,10 @@ class DialogueBox(SceneObject):
         self.on_complete = on_complete
         self.visible = True
 
-    def reset(self):
-        # self.namebox.set_text("")
+    def reset(self, hide_box: bool = True):
         self.page = None
         self.time_on_completed = 0.0
         self.time = 0
-        self.visible = False
 
     def get_num_visible_chars(self):
         return int(self.time * 20)
@@ -105,8 +103,8 @@ class DialogueBox(SceneObject):
             self.arrow.visible = True
             self.time_on_completed += delta
             if self.time_on_completed >= 1.0:
+                self.reset()
                 if self.on_complete is not None:
-                    self.reset()
                     self.on_complete()
                 else:
                     print(f"Text box for \"{self.page.get_raw_text()}\" is done but no on_complete")
@@ -165,7 +163,7 @@ textbox = DialogueBox(parent=root)
 
 my_scene = Scene(256, 192, root)
 
-DURATION = 30
+DURATION = 20
 FRAMES_PER_SECOND = 30
 
 
@@ -194,11 +192,23 @@ for box in get_rich_boxes("Hi here's a bunch of text also maybe the rich text is
     )
 
 sequencer.add_action(
+    RunFunctionAction(
+        lambda: textbox.hide()
+    )
+)
+
+sequencer.add_action(
         MoveSceneObjectAction(
         target_value=(-1290 + 256, 0),
         duration=1.0,
         scene_object=bg,
         ease_function=ease_in_out_cubic
+    )
+)
+
+sequencer.add_action(
+    RunFunctionAction(
+        lambda: textbox.show()
     )
 )
 
@@ -211,6 +221,11 @@ for box in get_rich_boxes("hey its me, mr edge worth uhhhhh updated autopsy repo
         )
     )
 
+sequencer.add_action(
+    RunFunctionAction(
+        lambda: textbox.hide()
+    )
+)
 
 sequencer.add_action(
     MoveSceneObjectAction(
@@ -221,11 +236,30 @@ sequencer.add_action(
 )
 
 sequencer.add_action(
+    SetImageObjectSpriteAction(new_filepath="phoenix-sweating(a).gif", image_object=phoenix)
+)
+
+sequencer.add_action(
     SetSceneObjectPositionAction(target_value=(0,0), scene_object=bg)
 )
 
 sequencer.add_action(
-    SetImageObjectSpriteAction(new_filepath="phoenix-sweating(a).gif", image_object=phoenix)
+    WaitAction(0.5)
+)
+
+for box in get_rich_boxes("uh ok bye"):
+    sequencer.add_action(
+        DisplayTextInTextBoxAction(
+            textbox,
+            "Phoenix",
+            box
+        )
+    )
+
+sequencer.add_action(
+    RunFunctionAction(
+        lambda: textbox.hide()
+    )
 )
 
 def render():
