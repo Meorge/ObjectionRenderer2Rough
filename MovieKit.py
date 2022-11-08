@@ -20,7 +20,8 @@ class Scene:
         all_objects: list[SceneObject] = sorted(self.__root.get_self_and_children_as_flat_list(), key=lambda obj: obj.z)
 
         for object in all_objects:
-            object.render(img, ctx)
+            if object.get_absolute_visibility():
+                object.render(img, ctx)
 
         img.save(path)
 
@@ -33,6 +34,7 @@ class SceneObject:
     y: int = 0
     z: int = 0
     name: str = ""
+    visible: bool = True
     __children: list['SceneObject'] = []
     __parent: 'SceneObject' = None
 
@@ -81,6 +83,14 @@ class SceneObject:
             z_out += p.z
             p = p.__parent
         return (x_out, y_out, z_out)
+
+    def get_absolute_visibility(self) -> bool:
+        p = self
+        while p is not None:
+            if not p.visible:
+                return False
+            p = p.__parent
+        return True
 
     def print_hierarchy(self):
         self.__internal_print_hierarchy(0)
@@ -185,6 +195,7 @@ class SimpleTextObject(SceneObject):
 
 class Sequencer:
     actions: list['SequenceAction'] = []
+    current_action: 'SequenceAction' = None
 
     def add_action(self, action: 'SequenceAction'):
         self.actions.append(action)
@@ -193,15 +204,23 @@ class Sequencer:
     def update(self, delta):
         if len(self.actions) <= 0:
             return False
-        current_action = self.actions[0]
-        current_action.update(delta)
+        new_current_action = self.actions[0]
+        if new_current_action != self.current_action:
+            print(f"Start action {new_current_action}")
+            new_current_action.start()
+        self.current_action = new_current_action
+        self.current_action.update(delta)
         return True
 
     def action_finished(self):
-        self.actions.pop(0)
+        if len(self.actions) > 0:
+            self.actions.pop(0)
 
 class SequenceAction:
     sequencer: Sequencer
+
+    def start(self):
+        ...
 
     def update(self, delta):
         ...
