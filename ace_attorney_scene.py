@@ -10,13 +10,32 @@ from typing import Callable
 
 class NameBox(SceneObject):
     def __init__(self, parent: SceneObject, pos: tuple[int, int, int]):
-        super().__init__(parent, pos)
-        self.namebox_l = ImageObject(parent=self, pos=(0, 0, 11), filepath="nametag_left.png")
-        self.namebox_c = ImageObject(parent=self, pos=(1, 0, 11), filepath="nametag_center.png")
-        self.namebox_r = ImageObject(parent=self, pos=(2, 0, 11), filepath="nametag_right.png")
-        self.namebox_text = SimpleTextObject(parent=self, pos=(4, 0, 12))
+        super().__init__(parent, "Name Box", pos)
+        self.namebox_l = ImageObject(
+            parent=self,
+            name="Name Box Left",
+            pos=(0, 0, 11),
+            filepath="new_assets/textbox/nametag_left.png"
+        )
+        self.namebox_c = ImageObject(
+            parent=self,
+            name="Name Box Center",
+            pos=(1, 0, 11),
+            filepath="new_assets/textbox/nametag_center.png"
+        )
+        self.namebox_r = ImageObject(
+            parent=self,
+            name="Name Box Right",
+            pos=(2, 0, 11),
+            filepath="new_assets/textbox/nametag_right.png"
+        )
+        self.namebox_text = SimpleTextObject(
+            parent=self,
+            name="Name Box Text",
+            pos=(4, 0, 12)
+        )
 
-        self.font = ImageFont.truetype("ace-name/ace-name.ttf", size=8)
+        self.font = ImageFont.truetype("new_assets/textbox/font/ace-name/ace-name.ttf", size=8)
         self.namebox_text.font = self.font
         self.set_text("Phoenix")
     
@@ -32,10 +51,24 @@ class NameBox(SceneObject):
 class DialogueBox(SceneObject):
     time: float = 0
     def __init__(self, parent: SceneObject):
-        super().__init__(parent, (0, 128, 12))
-        self.bg = ImageObject(parent=self, pos=(0, 0, 10), filepath="mainbox.png")
+        super().__init__(
+            parent=parent,
+            name="Dialogue Box",
+            pos=(0, 128, 12)
+        )
+        self.bg = ImageObject(
+            parent=self,
+            name="Dialogue Box Background",
+            pos=(0, 0, 10),
+            filepath="new_assets/textbox/mainbox.png"
+        )
         self.namebox = NameBox(parent=self, pos=(1, -11, 0))
-        self.arrow = ImageObject(parent=self, pos=(256 - 15 - 5, 64 - 15 - 5, 11), filepath="arrow.gif")
+        self.arrow = ImageObject(
+            parent=self,
+            name="Dialogue Box Arrow",
+            pos=(256 - 15 - 5, 64 - 15 - 5, 11),
+            filepath="new_assets/textbox/arrow.gif"
+        )
         self.arrow.visible = False
 
         self.page: DialoguePage = None
@@ -79,6 +112,7 @@ class DialogueBox(SceneObject):
             if self.time_on_completed >= 1.0:
                 self.reset()
                 if self.on_complete is not None:
+                    self.emit_message("box be done")
                     self.on_complete()
                 else:
                     print(f"Text box for \"{self.page.get_raw_text()}\" is done but no on_complete")
@@ -137,29 +171,28 @@ class AceAttorneyDirector(Director):
     def __init__(self, fps: float = 30):
         super().__init__(None, fps)
 
-        self.root = SceneObject()
-        self.root.name = "Root"
+        self.root = SceneObject(name="Root")
 
         self.bg = ImageObject(
             parent=self.root,
+            name="Background",
             pos=(0, 0, 0),
-            filepath="courtroom_bg.png"
+            filepath="new_assets/bg/bg_main.png"
             )
-        self.bg.name = "Background"
 
         self.phoenix = ImageObject(
             parent=self.bg,
+            name="Left Character",
             pos=(0, 0, 1),
-            filepath="phoenix-normal(a).gif"
+            filepath="new_assets/character_sprites/phoenix/phoenix-normal-idle.gif"
             )
-        self.phoenix.name = "Phoenix"
 
         self.edgeworth = ImageObject(
             parent=self.bg,
+            name="Right Character",
             pos=(1034, 0, 2),
-            filepath="edgeworth-normal(a).gif"
+            filepath="new_assets/character_sprites/edgeworth/edgeworth-normal-idle.gif"
             )
-        self.edgeworth.name = "Edgeworth"
 
         self.textbox = DialogueBox(parent=self.root)
 
@@ -227,8 +260,8 @@ director.show_text_box()
 director.text_box("Edgeworth", "hey its me, mr edge worth uhhhhh updated autopsy report")
 director.hide_text_box()
 director.wait(0.5)
-director.set_left_character_sprite("phoenix-sweating(a).gif")
-director.cut_to_left()
+director.set_left_character_sprite("new_assets/character_sprites/phoenix/phoenix-sweating-idle.gif")
+director.pan_to_left()
 director.wait(0.5)
 director.text_box("Phoenix", "cool great thanks im so happy")
 director.hide_text_box()

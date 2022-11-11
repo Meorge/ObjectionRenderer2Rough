@@ -2,7 +2,7 @@ from PIL import Image, ImageDraw, ImageFont
 import ffmpeg
 from math_helpers import lerp
 from typing import Callable, Union
-from time import time
+from time import time, sleep
 from os import mkdir
 from shutil import rmtree
 
@@ -22,7 +22,7 @@ class Scene:
             self.__root.__parent = None
         self.__root = root
         if self.__root is not None:
-            self.__root.__parent = self
+            self.__root.make_root(self)
 
     def render(self, path: str):
         img = Image.new("RGBA", (self.w, self.h))
@@ -46,6 +46,9 @@ class Scene:
     def is_animation_done(self):
         return self.__done
 
+    def receive_message(self, data):
+        print(f"Received message: {data}")
+
 class SceneObject:
     x: int = 0
     y: int = 0
@@ -55,11 +58,15 @@ class SceneObject:
     __children: list['SceneObject'] = []
     __parent: Union['SceneObject', Scene] = None
 
-    def __init__(self, parent: 'SceneObject' = None, pos: tuple[int, int, int] = (0,0,0)):
+    def __init__(self, parent: 'SceneObject' = None, name: str = "", pos: tuple[int, int, int] = (0,0,0)):
         self.x, self.y, self.z = pos
+        self.name = name
         self.__children = []
 
-        if parent is not None:
+        if isinstance(parent, Scene):
+            parent.set_root(self)
+
+        elif isinstance(parent, SceneObject) and parent is not None:
             parent.add_child(self)
 
     def __repr__(self) -> str:
@@ -89,6 +96,9 @@ class SceneObject:
     def hide(self):
         self.visible = False
 
+    def make_root(self, scene: Scene):
+        self.__parent = scene
+
     def add_child(self, new_child: 'SceneObject'):
         self.__children.append(new_child)
         if new_child.__parent is not None:
@@ -100,7 +110,7 @@ class SceneObject:
         x_out = 0
         y_out = 0
         z_out = 0
-        while p is not None:
+        while p is not None and not isinstance(p, Scene):
             x_out += p.x
             y_out += p.y
             z_out += p.z
@@ -109,7 +119,7 @@ class SceneObject:
 
     def get_absolute_visibility(self) -> bool:
         p = self
-        while p is not None:
+        while p is not None and not isinstance(p, Scene):
             if not p.visible:
                 return False
             p = p.__parent
@@ -132,13 +142,13 @@ class SceneObject:
         f(self)
         return nodes
 
-    def emit_animation_done(self):
+    def emit_message(self, data):
         if isinstance(self.__parent, SceneObject):
-            self.__parent.emit_animation_done()
+            self.__parent.emit_message(data)
         elif isinstance(self.__parent, Scene):
-            self.__parent.set_animation_done()
+            self.__parent.receive_message(data)
         else:
-            print(f"Parent of SceneObject {self} is {type(self.__parent)} - we want it to be a SceneObject or a Scene! Can't notify the Scene that the animation is done.")
+            print(f"Error in emit_audio - parent of {self} is type {type(self.__parent)}")
 
 class ImageObject(SceneObject):
     filepath: str = ""
@@ -149,11 +159,11 @@ class ImageObject(SceneObject):
 
     image_data: list[tuple[Image.Image, float]] = []
 
-    def __init__(self, parent: 'SceneObject' = None, pos: tuple[int, int, int] = (0, 0, 0), \
+    def __init__(self, parent: 'SceneObject' = None, name: str = "", pos: tuple[int, int, int] = (0, 0, 0), \
         width: int = None,
         height: int = None,
         filepath: str = None):
-        super().__init__(parent, pos)
+        super().__init__(parent, name, pos)
         self.width = width
         self.height = height
         self.set_filepath(filepath)
@@ -201,9 +211,9 @@ class ImageObject(SceneObject):
         img.paste(resized, box, mask=resized)
 
 class SimpleTextObject(SceneObject):
-    def __init__(self, parent: 'SceneObject' = None, pos: tuple[int, int, int] = (0,0,0), \
+    def __init__(self, parent: 'SceneObject' = None, name: str = "", pos: tuple[int, int, int] = (0,0,0), \
         text: str = "", font: ImageFont.FreeTypeFont = None):
-        super().__init__(parent, pos)
+        super().__init__(parent, name, pos)
         self.text = text
         self.font = font
 
