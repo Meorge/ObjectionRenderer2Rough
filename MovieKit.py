@@ -1,7 +1,10 @@
 from PIL import Image, ImageDraw, ImageFont
 import ffmpeg
 from math_helpers import lerp
-from typing import Callable
+from typing import Callable, Union
+from time import time
+from os import mkdir
+from shutil import rmtree
 
 class Scene:
     w: int = 0
@@ -11,7 +14,15 @@ class Scene:
     def __init__(self, w: int = 0, h: int = 0, root: 'SceneObject' = None):
         self.w = w
         self.h = h
+        self.__done = False
+        self.set_root(root)
+
+    def set_root(self, root: 'SceneObject'):
+        if self.__root is not None:
+            self.__root.__parent = None
         self.__root = root
+        if self.__root is not None:
+            self.__root.__parent = self
 
     def render(self, path: str):
         img = Image.new("RGBA", (self.w, self.h))
@@ -29,6 +40,12 @@ class Scene:
         for object in self.__root.get_self_and_children_as_flat_list():
             object.update(delta)
 
+    def set_animation_done(self):
+        self.__done = True
+
+    def is_animation_done(self):
+        return self.__done
+
 class SceneObject:
     x: int = 0
     y: int = 0
@@ -36,7 +53,7 @@ class SceneObject:
     name: str = ""
     visible: bool = True
     __children: list['SceneObject'] = []
-    __parent: 'SceneObject' = None
+    __parent: Union['SceneObject', Scene] = None
 
     def __init__(self, parent: 'SceneObject' = None, pos: tuple[int, int, int] = (0,0,0)):
         self.x, self.y, self.z = pos
@@ -114,6 +131,14 @@ class SceneObject:
                 f(ch)
         f(self)
         return nodes
+
+    def emit_animation_done(self):
+        if isinstance(self.__parent, SceneObject):
+            self.__parent.emit_animation_done()
+        elif isinstance(self.__parent, Scene):
+            self.__parent.set_animation_done()
+        else:
+            print(f"Parent of SceneObject {self} is {type(self.__parent)} - we want it to be a SceneObject or a Scene! Can't notify the Scene that the animation is done.")
 
 class ImageObject(SceneObject):
     filepath: str = ""
@@ -200,6 +225,7 @@ class SimpleTextObject(SceneObject):
         ctx.text(**args)
 
 class Sequencer:
+    scene: Scene
     actions: list['SequenceAction'] = []
     current_action: 'SequenceAction' = None
 
@@ -207,12 +233,14 @@ class Sequencer:
         self.actions.append(action)
         action.sequencer = self
 
+    def is_done(self):
+        return len(self.actions) <= 0
+
     def update(self, delta):
-        if len(self.actions) <= 0:
+        if self.is_done():
             return False
         new_current_action = self.actions[0]
         if new_current_action != self.current_action:
-            print(f"Start action {new_current_action}")
             new_current_action.start()
         self.current_action = new_current_action
         self.current_action.update(delta)
@@ -339,3 +367,28 @@ class RunFunctionAction(SequenceAction):
     def update(self, delta):
         self.func()
         self.sequencer.action_finished()
+
+
+class Director:
+    def __init__(self, scene: Scene = None, fps: float = 30):
+        self.sequencer = Sequencer()
+        self.scene = scene
+        self.fps = fps
+
+    def render_movie(self):
+        frame: int = 0
+        temp_folder_name = f"output-{int(time())}"
+        mkdir(temp_folder_name)
+        while not self.sequencer.is_done():
+            self.sequencer.update(1 / self.fps)
+            self.scene.update(1 / self.fps)
+            self.scene.render(f"{temp_folder_name}/{frame:010d}.png")
+            frame += 1
+            
+        stream = ffmpeg.input(f"{temp_folder_name}/*.png", pattern_type="glob", framerate=self.fps)
+        stream = ffmpeg.output(stream, f"{temp_folder_name}.mp4", vcodec='mpeg4')
+        stream = ffmpeg.overwrite_output(stream)
+        ffmpeg.run(stream)
+
+        # Delete folder
+        rmtree(temp_folder_name)

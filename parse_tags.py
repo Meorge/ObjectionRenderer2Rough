@@ -53,6 +53,7 @@ class DialoguePage:
         The chunks we read should be added to a list, and the chunk we're reading right now
         should be cut off to its correct length before being added.
         """
+        read_everything = True
         chars_remaining = visible_chars
         new_lines = []
         for line in self.lines:

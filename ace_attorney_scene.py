@@ -1,38 +1,12 @@
 from MovieKit import Scene, SceneObject, ImageObject, MoveSceneObjectAction, \
-    Sequencer, SetSceneObjectPositionAction, WaitAction, SetImageObjectSpriteAction, \
-        SimpleTextObject, SequenceAction, RunFunctionAction
-import ffmpeg
+    SetSceneObjectPositionAction, WaitAction, SetImageObjectSpriteAction, \
+        SimpleTextObject, SequenceAction, RunFunctionAction, Director
 from math_helpers import ease_in_out_cubic
 from PIL import Image, ImageDraw, ImageFont
 from parse_tags import DialoguePage, get_rich_boxes
 from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable
-
-
-root = SceneObject()
-root.name = "Root"
-
-bg = ImageObject(
-    parent=root,
-    pos=(0, 0, 0),
-    filepath="courtroom_bg.png"
-    )
-bg.name = "Background"
-
-phoenix = ImageObject(
-    parent=bg,
-    pos=(0, 0, 1),
-    filepath="phoenix-normal(a).gif"
-    )
-phoenix.name = "Phoenix"
-
-edgeworth = ImageObject(
-    parent=bg,
-    pos=(1034, 0, 2),
-    filepath="edgeworth-normal(a).gif"
-    )
-edgeworth.name = "Edgeworth"
 
 class NameBox(SceneObject):
     def __init__(self, parent: SceneObject, pos: tuple[int, int, int]):
@@ -61,7 +35,7 @@ class DialogueBox(SceneObject):
         super().__init__(parent, (0, 128, 12))
         self.bg = ImageObject(parent=self, pos=(0, 0, 10), filepath="mainbox.png")
         self.namebox = NameBox(parent=self, pos=(1, -11, 0))
-        self.arrow = ImageObject(parent=self, pos=(256 - 9 - 6, 48, 11), filepath="arrow.png")
+        self.arrow = ImageObject(parent=self, pos=(256 - 15 - 5, 64 - 15 - 5, 11), filepath="arrow.gif")
         self.arrow.visible = False
 
         self.page: DialoguePage = None
@@ -159,119 +133,103 @@ class DisplayTextInTextBoxAction(SequenceAction):
         if self.tb.time_on_completed >= 1:
             self.sequencer.action_finished()
 
-textbox = DialogueBox(parent=root)
+class AceAttorneyDirector(Director):
+    def __init__(self, fps: float = 30):
+        super().__init__(None, fps)
 
-my_scene = Scene(256, 192, root)
+        self.root = SceneObject()
+        self.root.name = "Root"
 
-DURATION = 20
-FRAMES_PER_SECOND = 30
+        self.bg = ImageObject(
+            parent=self.root,
+            pos=(0, 0, 0),
+            filepath="courtroom_bg.png"
+            )
+        self.bg.name = "Background"
+
+        self.phoenix = ImageObject(
+            parent=self.bg,
+            pos=(0, 0, 1),
+            filepath="phoenix-normal(a).gif"
+            )
+        self.phoenix.name = "Phoenix"
+
+        self.edgeworth = ImageObject(
+            parent=self.bg,
+            pos=(1034, 0, 2),
+            filepath="edgeworth-normal(a).gif"
+            )
+        self.edgeworth.name = "Edgeworth"
+
+        self.textbox = DialogueBox(parent=self.root)
+
+        self.scene = Scene(256, 192, self.root)
 
 
-# boxes_for_this_thing = []
-# raw_text_1 = "Hi here's a bunch of text also maybe the rich text is breaking again??? if so yay cool great"
-# boxes_for_this_thing.extend(get_rich_boxes(raw_text_1))
+    def text_box(self, speaker: str, body: str):
+        for box in get_rich_boxes(body):
+            self.sequencer.add_action(
+                DisplayTextInTextBoxAction(
+                    self.textbox,
+                    speaker,
+                    box
+                )
+            ) 
 
-# def next_box():
-#     if len(boxes_for_this_thing) > 0:
-#         box = boxes_for_this_thing.pop(0)
-#         textbox.set_page(box, on_complete=next_box)
+    def show_text_box(self):
+        self.sequencer.add_action(RunFunctionAction(lambda: self.textbox.show()))
 
-# next_box()
-# raw_text_2 = "And here's another box worth of text aint that just the neato burrito"
-# text_boxes_2 = get_rich_boxes(raw_text_2)
+    def hide_text_box(self):
+        self.sequencer.add_action(RunFunctionAction(lambda: self.textbox.hide()))
 
-sequencer = Sequencer()
-
-for box in get_rich_boxes("Hi here's a bunch of text also maybe the rich text is breaking again??? if so yay cool great"):
-    sequencer.add_action(
-        DisplayTextInTextBoxAction(
-            textbox,
-            "Phoenix",
-            box
+    def pan_to_right(self):
+        self.sequencer.add_action(
+                MoveSceneObjectAction(
+                target_value=(-1290 + 256, 0),
+                duration=1.0,
+                scene_object=self.bg,
+                ease_function=ease_in_out_cubic
+            )
         )
-    )
 
-sequencer.add_action(
-    RunFunctionAction(
-        lambda: textbox.hide()
-    )
-)
-
-sequencer.add_action(
-        MoveSceneObjectAction(
-        target_value=(-1290 + 256, 0),
-        duration=1.0,
-        scene_object=bg,
-        ease_function=ease_in_out_cubic
-    )
-)
-
-sequencer.add_action(
-    RunFunctionAction(
-        lambda: textbox.show()
-    )
-)
-
-for box in get_rich_boxes("hey its me, mr edge worth uhhhhh updated autopsy report"):
-    sequencer.add_action(
-        DisplayTextInTextBoxAction(
-            textbox,
-            "Edgeworth",
-            box
+    def pan_to_left(self):
+        self.sequencer.add_action(
+                MoveSceneObjectAction(
+                target_value=(0, 0),
+                duration=1.0,
+                scene_object=self.bg,
+                ease_function=ease_in_out_cubic
+            )
         )
-    )
 
-sequencer.add_action(
-    RunFunctionAction(
-        lambda: textbox.hide()
-    )
-)
+    def cut_to_left(self):
+        self.sequencer.add_action(SetSceneObjectPositionAction(target_value=(0, 0), scene_object=self.bg))
 
-sequencer.add_action(
-    MoveSceneObjectAction(
-        target_value=(1290, 0),
-        duration=5.0,
-        scene_object=edgeworth
-    )
-)
+    def cut_to_right(self):
+        self.sequencer.add_action(SetSceneObjectPositionAction(target_value=(-1920 + 256, 0), scene_object=self.bg))
 
-sequencer.add_action(
-    SetImageObjectSpriteAction(new_filepath="phoenix-sweating(a).gif", image_object=phoenix)
-)
-
-sequencer.add_action(
-    SetSceneObjectPositionAction(target_value=(0,0), scene_object=bg)
-)
-
-sequencer.add_action(
-    WaitAction(0.5)
-)
-
-for box in get_rich_boxes("uh ok bye"):
-    sequencer.add_action(
-        DisplayTextInTextBoxAction(
-            textbox,
-            "Phoenix",
-            box
+    def wait(self, t):
+        self.sequencer.add_action(
+            WaitAction(0.5)
         )
-    )
 
-sequencer.add_action(
-    RunFunctionAction(
-        lambda: textbox.hide()
-    )
-)
+    def set_left_character_sprite(self, path):
+        self.sequencer.add_action(
+            SetImageObjectSpriteAction(new_filepath=path, image_object=self.phoenix)
+        )
 
-def render():
-    for frame in range(FRAMES_PER_SECOND * DURATION):
-        t = frame / FRAMES_PER_SECOND
-        sequencer.update(1 / FRAMES_PER_SECOND)
-        my_scene.update(1 / FRAMES_PER_SECOND)
-        my_scene.render(f"outputs/{frame:010d}.png")
 
-    stream = ffmpeg.input("outputs/*.png", pattern_type="glob", framerate=FRAMES_PER_SECOND)
-    stream = ffmpeg.output(stream, "movie.mp4", vcodec='mpeg4')
-    stream = ffmpeg.overwrite_output(stream)
-    ffmpeg.run(stream)
-
-render()
+director = AceAttorneyDirector()
+director.text_box("Phoenix", "Hi here's a bunch of text also maybe the rich text is breaking again???")
+director.hide_text_box()
+director.pan_to_right()
+director.show_text_box()
+director.text_box("Edgeworth", "hey its me, mr edge worth uhhhhh updated autopsy report")
+director.hide_text_box()
+director.wait(0.5)
+director.set_left_character_sprite("phoenix-sweating(a).gif")
+director.cut_to_left()
+director.wait(0.5)
+director.text_box("Phoenix", "cool great thanks im so happy")
+director.hide_text_box()
+director.render_movie()
