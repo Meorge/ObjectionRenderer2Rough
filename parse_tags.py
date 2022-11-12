@@ -74,7 +74,9 @@ class DialoguePage:
             if chars_remaining <= 0:
                 break
 
-        return DialoguePage(new_lines)
+        d = DialoguePage(new_lines)
+        # print("output from get_visible_text", d)
+        return d
 
     def condense_chunks(self) -> 'DialoguePage':
         lines_of_chunks = []
@@ -91,10 +93,12 @@ class DialoguePage:
                     chunks.append(DialogueTextChunk(current_string, current_tags))
                     current_string = chunk.text
                     current_tags = chunk.tags.copy()
-            if len(current_string) > 0:
+            if len(current_string) >= 0:
                 chunks.append(DialogueTextChunk(current_string, current_tags))
             lines_of_chunks.append(chunks)
-        return DialoguePage(lines_of_chunks)
+
+        d = DialoguePage(lines_of_chunks)
+        return d
 
 @dataclass
 class DialogueTextContent:
@@ -153,7 +157,6 @@ def parse_text(text: str) -> DialogueTextContent:
 
         # Opening tag, like <red>
         if not is_closing_tag and not is_self_closing_tag:
-            print(f"Opening tag found! {tag_name}")
             tag_stack.append({
                 "name": tag_name,
                 "start": start

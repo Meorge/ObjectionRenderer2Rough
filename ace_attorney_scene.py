@@ -89,8 +89,6 @@ class DialogueBox(SceneObject):
         self.on_complete = on_complete
         self.visible = True
 
-        print(self.page)
-
     def reset(self, hide_box: bool = True):
         self.page = None
         self.time_on_completed = 0.0
@@ -106,9 +104,8 @@ class DialogueBox(SceneObject):
         visible_text_len = len(self.page.get_visible_text(self.get_num_visible_chars()).get_raw_text())
         return full_text_len == visible_text_len
 
-
     def handle_tags(self):
-        for tag in self.last_latest_chunk.tags:
+        for tag in self.last_latest_chunk_tags:
             tag_parts = tag.split()
             if tag_parts[0] == "sprite":
                 self.handle_switch_sprite_tag(tag_parts[1], tag_parts[2])
@@ -122,7 +119,7 @@ class DialogueBox(SceneObject):
             print(f"Right sprite should become {new_path}")
             self.director.edgeworth.set_filepath(new_path)
 
-    last_latest_chunk: DialogueTextChunk = None
+    last_latest_chunk_tags: list[str] = None
     def update(self, delta):
         self.time += delta
 
@@ -146,9 +143,10 @@ class DialogueBox(SceneObject):
         # Check for actions on current chunk
         text_so_far = self.page.get_visible_text(self.get_num_visible_chars())
         try:
-            latest_chunk = text_so_far.lines[-1][-1]
-            if latest_chunk != self.last_latest_chunk:
-                self.last_latest_chunk = latest_chunk
+            latest_chunk_tags = text_so_far.lines[-1][-1].tags
+            if latest_chunk_tags != self.last_latest_chunk_tags:
+                print(f"Latest chunk changed to {latest_chunk_tags}")
+                self.last_latest_chunk_tags = latest_chunk_tags
                 self.handle_tags()
         except IndexError as e:
             print(f"{e}")
@@ -292,16 +290,17 @@ def get_sprite_tag(location: str, character: str, emotion: str):
     return f"<sprite {location} {get_sprite_location(character, emotion)}/>"
 
 director = AceAttorneyDirector()
-director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???")
+director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hello world{get_sprite_tag('left', 'phoenix', 'normal-idle')}")
+# director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???")
 director.hide_text_box()
-director.pan_to_right()
-director.show_text_box()
-director.text_box("Edgeworth", f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh updated autopsy report{get_sprite_tag('right', 'edgeworth', 'normal-idle')}.")
-director.hide_text_box()
-director.wait(0.5)
-director.set_left_character_sprite(get_sprite_location('phoenix', 'sweating-idle'))
-director.pan_to_left()
-director.wait(0.5)
-director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'sweating-talk')}cool great thanks im so happy{get_sprite_tag('left', 'phoenix', 'sweating-idle')}.")
-director.hide_text_box()
+# director.pan_to_right()
+# director.show_text_box()
+# director.text_box("Edgeworth", f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh updated autopsy report{get_sprite_tag('right', 'edgeworth', 'normal-idle')}.")
+# director.hide_text_box()
+# director.wait(0.5)
+# director.set_left_character_sprite(get_sprite_location('phoenix', 'sweating-idle'))
+# director.pan_to_left()
+# director.wait(0.5)
+# director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'sweating-talk')}cool great thanks im so happy{get_sprite_tag('left', 'phoenix', 'sweating-idle')}.")
+# director.hide_text_box()
 director.render_movie()
