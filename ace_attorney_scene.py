@@ -3,7 +3,7 @@ from MovieKit import Scene, SceneObject, ImageObject, MoveSceneObjectAction, \
         SimpleTextObject, SequenceAction, RunFunctionAction, Director
 from math_helpers import ease_in_out_cubic
 from PIL import Image, ImageDraw, ImageFont
-from parse_tags import DialoguePage, get_rich_boxes
+from parse_tags import DialoguePage, get_rich_boxes, DialogueTextChunk
 from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable
@@ -50,12 +50,13 @@ class NameBox(SceneObject):
 
 class DialogueBox(SceneObject):
     time: float = 0
-    def __init__(self, parent: SceneObject):
+    def __init__(self, parent: SceneObject, director: 'AceAttorneyDirector'):
         super().__init__(
             parent=parent,
             name="Dialogue Box",
             pos=(0, 128, 12)
         )
+        self.director = director
         self.bg = ImageObject(
             parent=self,
             name="Dialogue Box Background",
@@ -88,6 +89,8 @@ class DialogueBox(SceneObject):
         self.on_complete = on_complete
         self.visible = True
 
+        print(self.page)
+
     def reset(self, hide_box: bool = True):
         self.page = None
         self.time_on_completed = 0.0
@@ -103,9 +106,27 @@ class DialogueBox(SceneObject):
         visible_text_len = len(self.page.get_visible_text(self.get_num_visible_chars()).get_raw_text())
         return full_text_len == visible_text_len
 
+
+    def handle_tags(self):
+        for tag in self.last_latest_chunk.tags:
+            tag_parts = tag.split()
+            if tag_parts[0] == "sprite":
+                self.handle_switch_sprite_tag(tag_parts[1], tag_parts[2])
+
+    def handle_switch_sprite_tag(self, position: str, new_path: str):
+        if position == "left":
+            print(f"Left sprite should become {new_path}")
+            self.director.phoenix.set_filepath(new_path)
+
+        elif position == "right":
+            print(f"Right sprite should become {new_path}")
+            self.director.edgeworth.set_filepath(new_path)
+
+    last_latest_chunk: DialogueTextChunk = None
     def update(self, delta):
         self.time += delta
 
+        self.arrow.visible = False
         if self.get_all_done():
             self.arrow.visible = True
             self.time_on_completed += delta
@@ -116,9 +137,22 @@ class DialogueBox(SceneObject):
                     self.on_complete()
                 else:
                     print(f"Text box for \"{self.page.get_raw_text()}\" is done but no on_complete")
-        else:
-            self.arrow.visible = False
 
+            return
+        
+        if self.page is None:
+            return
+
+        # Check for actions on current chunk
+        text_so_far = self.page.get_visible_text(self.get_num_visible_chars())
+        try:
+            latest_chunk = text_so_far.lines[-1][-1]
+            if latest_chunk != self.last_latest_chunk:
+                self.last_latest_chunk = latest_chunk
+                self.handle_tags()
+        except IndexError as e:
+            print(f"{e}")
+            
 
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
         if self.page is None:
@@ -194,7 +228,7 @@ class AceAttorneyDirector(Director):
             filepath="new_assets/character_sprites/edgeworth/edgeworth-normal-idle.gif"
             )
 
-        self.textbox = DialogueBox(parent=self.root)
+        self.textbox = DialogueBox(parent=self.root, director=self)
 
         self.scene = Scene(256, 192, self.root)
 
@@ -251,18 +285,23 @@ class AceAttorneyDirector(Director):
             SetImageObjectSpriteAction(new_filepath=path, image_object=self.phoenix)
         )
 
+def get_sprite_location(character: str, emotion: str):
+    return f"new_assets/character_sprites/{character}/{character}-{emotion}.gif"
+
+def get_sprite_tag(location: str, character: str, emotion: str):
+    return f"<sprite {location} {get_sprite_location(character, emotion)}/>"
 
 director = AceAttorneyDirector()
-director.text_box("Phoenix", "Hi here's a bunch of text also maybe the rich text is breaking again???")
+director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???")
 director.hide_text_box()
 director.pan_to_right()
 director.show_text_box()
-director.text_box("Edgeworth", "hey its me, mr edge worth uhhhhh updated autopsy report")
+director.text_box("Edgeworth", f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh updated autopsy report{get_sprite_tag('right', 'edgeworth', 'normal-idle')}.")
 director.hide_text_box()
 director.wait(0.5)
-director.set_left_character_sprite("new_assets/character_sprites/phoenix/phoenix-sweating-idle.gif")
+director.set_left_character_sprite(get_sprite_location('phoenix', 'sweating-idle'))
 director.pan_to_left()
 director.wait(0.5)
-director.text_box("Phoenix", "cool great thanks im so happy")
+director.text_box("Phoenix", f"{get_sprite_tag('left', 'phoenix', 'sweating-talk')}cool great thanks im so happy{get_sprite_tag('left', 'phoenix', 'sweating-idle')}.")
 director.hide_text_box()
 director.render_movie()

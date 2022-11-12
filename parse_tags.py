@@ -108,12 +108,14 @@ class DialogueTextContent:
             splitter_font_path = get_best_font(box_text, FONT_ARRAY)['path']
             wrapped_box_lines = split_str_into_newlines(box_text, splitter_font_path, 15).split('\n')
             lines: list[list[DialogueTextChunk]] = []
+
             for line in wrapped_box_lines:
                 chunks: list[DialogueTextChunk] = []
                 for char in line:
                     this_char_tags: list[str] = []
                     for tag in self.tags:
-                        if isinstance(tag, DialogueTag) and current_position in tag.range():
+                        if (isinstance(tag, DialogueTag) and current_position in tag.range()) or \
+                            (isinstance(tag, DialogueAction) and current_position == tag.index):
                             this_char_tags.append(tag.name)
                     chunks.append(DialogueTextChunk(char, this_char_tags))
                     current_position += 1
@@ -130,7 +132,7 @@ class DialogueTextContent:
 # Group 2: Tag name
 # Group 3: Arguments to tag
 # Group 4: Optional slash at end (i.e. it's self-closing, like an action)
-tag_re = compile(r"<(/??)([a-z]*?)(/??)>")
+tag_re = compile(r"<(/?)(.*?)(/??)>")
 
 def parse_text(text: str) -> DialogueTextContent:
     tag_stack = []
@@ -150,7 +152,8 @@ def parse_text(text: str) -> DialogueTextContent:
             raise Exception(f"Tag at index {start} is both closing and self-closing")
 
         # Opening tag, like <red>
-        if not is_closing_tag:
+        if not is_closing_tag and not is_self_closing_tag:
+            print(f"Opening tag found! {tag_name}")
             tag_stack.append({
                 "name": tag_name,
                 "start": start
@@ -160,31 +163,32 @@ def parse_text(text: str) -> DialogueTextContent:
         elif is_closing_tag:
             if len(tag_stack) == 0:
                 # Closing tag before opening tag
+                print(f"Error - tag stack is empty on closing tag {tag_name}")
                 return DialogueTextContent(text, [])
             tag = tag_stack.pop()
             if tag["name"] != tag_name:
                 # Tag mismatch
+                print(f"Error - tag mismatch (opening tag {tag['name']}, closing tag {tag_name})")
                 return DialogueTextContent(text, [])
 
             # I know it's confusing, sorry. This is the start index of the closing tag
+            print(f"Closing tag found! {tag_name}")
             tag["end"] = start
             final_tags.append(tag)
 
         # Self-closing tag, like <shake/>
-        if is_self_closing_tag:
+        elif is_self_closing_tag:
             final_tags.append({
                 "name": tag_name,
-                "index": start
+                "start": start,
+                "end": start+1
             })
         next_match = tag_re.search(stripped_text)
 
     # Construct list of tags and actions
     tag_objects = []
     for tag in final_tags:
-        if "index" in tag:
-            tag_objects.append(DialogueAction(**tag))
-        else:
-            tag_objects.append(DialogueTag(**tag))
+        tag_objects.append(DialogueTag(**tag))
 
     return DialogueTextContent(stripped_text, tag_objects)
 
