@@ -175,7 +175,6 @@ def parse_text(text: str) -> DialogueTextContent:
                 return DialogueTextContent(text, [])
 
             # I know it's confusing, sorry. This is the start index of the closing tag
-            print(f"Closing tag found! {tag_name}")
             tag["end"] = start
             final_tags.append(tag)
 
