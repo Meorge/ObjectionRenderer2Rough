@@ -160,6 +160,9 @@ class ImageObject(SceneObject):
 
     image_data: list[tuple[Image.Image, float]] = []
 
+    current_frame: Image = None
+    callbacks: dict = {}
+
     def __init__(self, parent: 'SceneObject' = None, name: str = "", pos: tuple[int, int, int] = (0, 0, 0), \
         width: int = None,
         height: int = None,
@@ -167,12 +170,19 @@ class ImageObject(SceneObject):
         super().__init__(parent, name, pos)
         self.width = width
         self.height = height
+        self.current_frame = None
         self.set_filepath(filepath)
 
     def update(self, delta):
+        t_before = self.t
         self.t += delta
+        for time, callback in self.callbacks.items():
+            if t_before < time and self.t >= time:
+                callback()
 
-    def set_filepath(self, filepath: str):
+    def set_filepath(self, filepath: str, callbacks: dict = None):
+        self.callbacks = callbacks if callbacks is not None else {}
+        self.t = 0.0
         self.filepath = filepath
         with Image.open(self.filepath) as my_img:
             if my_img.is_animated:
@@ -385,6 +395,7 @@ class Director:
         self.scene = scene
         self.fps = fps
         self.audio_commands: list[dict] = []
+        self.time = 0.0
 
     def render_audio(self, overall_duration, output_location):
         duration_ms = int(overall_duration * 1000)
