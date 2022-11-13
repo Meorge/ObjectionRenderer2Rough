@@ -177,13 +177,16 @@ class ImageObject(SceneObject):
         t_before = self.t
         self.t += delta
         for time, callback in self.callbacks.items():
-            if t_before < time and self.t >= time:
+            if t_before < time and self.t >= time and callback is not None:
                 callback()
 
     def set_filepath(self, filepath: str, callbacks: dict = None):
         self.callbacks = callbacks if callbacks is not None else {}
         self.t = 0.0
         self.filepath = filepath
+        if self.filepath is None:
+            self.image_data = None
+            return
         with Image.open(self.filepath) as my_img:
             if my_img.is_animated:
                 self.image_data = []
@@ -208,6 +211,8 @@ class ImageObject(SceneObject):
         return None
 
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
+        if self.image_data is None:
+            return
         x, y, _ = self.get_absolute_position()
         box = (x, y)
         if isinstance(self.image_data, Image.Image):

@@ -17,7 +17,7 @@ from parse_tags import DialoguePage, get_rich_boxes, DialogueTextChunk
 from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable, Optional
-
+from os.path import exists
 
 class NameBox(SceneObject):
     def __init__(self, parent: SceneObject, pos: tuple[int, int, int]):
@@ -147,11 +147,20 @@ class DialogueBox(SceneObject):
                 self.director.start_voice_blips(tag_parts[1])
             elif tag_parts[0] == "stopblip":
                 self.director.end_voice_blips()
+            elif tag_parts[0] == "showarrow":
+                self.director.textbox.arrow.show()
+            elif tag_parts[0] == "hidearrow":
+                self.director.textbox.arrow.hide()
+            elif tag_parts[0] == "objection":
+                self.director.exclamation.play_objection(tag_parts[1])
+            elif tag_parts[0] == "holdit":
+                self.director.exclamation.play_holdit(tag_parts[1])
+            elif tag_parts[0] == "takethat":
+                self.director.exclamation.play_takethat(tag_parts[1])
 
     def handle_switch_sprite_tag(self, position: str, new_path: str):
         if position == "left":
             self.director.phoenix.set_filepath(new_path)
-
         elif position == "right":
             self.director.edgeworth.set_filepath(new_path)
 
@@ -183,27 +192,9 @@ class DialogueBox(SceneObject):
         except IndexError as e:
             pass
 
-        self.arrow.visible = False
         if self.get_all_done():
-            if self.time_on_completed <= 0.0:
-                # This is the first frame it's finished
-                self.director.end_voice_blips()
-            self.has_finished = True
-
-            self.arrow.visible = True
-            self.time_on_completed += delta
-            if self.time_on_completed >= 1.0:
-                self.reset()
-                if self.on_complete is not None:
-                    self.emit_message("box be done")
-                    self.director.next_dialogue_sound()
-                    self.on_complete()
-                else:
-                    print(
-                        f'Text box for "{self.page.get_raw_text()}" is done but no on_complete'
-                    )
-
-            return
+            self.reset()
+            self.on_complete()
 
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
         if self.page is None:
@@ -245,6 +236,49 @@ class DialogueBox(SceneObject):
                     add_to_x_offset = self.font.getsize(chunk.text)[0]
 
                 x_offset += (add_to_x_offset * -1) if self.use_rtl else add_to_x_offset
+
+class ExclamationObject(ImageObject):
+    def __init__(self, parent: SceneObject, director: 'AceAttorneyDirector'):
+        super().__init__(
+            parent=parent,
+            name="Exclamation Image",
+            pos=(0, 0, 20)
+            )
+        self.director = director
+
+    def get_clip_exists(self, type: str, speaker: str):
+        return exists(f"new_assets/exclamations/{type}-{speaker}.mp3")
+
+    def play_objection(self, speaker: str):
+        self.play_exclamation("objection", speaker)
+
+    def play_holdit(self, speaker: str):
+        self.play_exclamation("holdit", speaker)
+
+    def play_takethat(self, speaker: str):
+        self.play_exclamation("takethat", speaker)
+
+    def play_exclamation(self, type: str, speaker: str):
+        self.set_filepath(
+            f"new_assets/exclamations/{type}.gif",
+            {
+                0.7: lambda: self.set_filepath(None)
+            })
+
+        if self.get_clip_exists(type, speaker):
+            self.director.audio_commands.append({
+                "type": "audio",
+                "path": f"new_assets/exclamations/{type}-{speaker}.mp3",
+                "offset": self.director.time
+            })
+        else:
+            self.director.audio_commands.append({
+                "type": "audio",
+                "path": f"new_assets/exclamations/{type}-generic.mp3",
+                "offset": self.director.time
+            })
+
+    
 
 
 class DisplayTextInTextBoxAction(SequenceAction):
@@ -288,12 +322,16 @@ class AceAttorneyDirector(Director):
             filepath="new_assets/character_sprites/edgeworth/edgeworth-normal-idle.gif",
         )
 
+        self.exclamation = ExclamationObject(
+            parent=self.root,
+            director=self
+        )
+
         self.textbox = DialogueBox(parent=self.root, director=self)
 
         self.scene = Scene(256, 192, self.root)
 
     def text_box(self, speaker: str, body: str):
-        print(body)
         for box in get_rich_boxes(body):
             self.sequencer.add_action(
                 DisplayTextInTextBoxAction(self.textbox, speaker, box)
@@ -440,21 +478,21 @@ director = AceAttorneyDirector()
 director.start_music_track("cross-moderato")
 director.text_box(
     "Phoenix",
-    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>{B_ST}{SLAM_PHX} I{B_M} just did it did you see that <green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}"
+    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>{B_ST}{SLAM_PHX} I{B_M} just did it did{B_ST}<objection phoenix/><wait 0.75/> {B_M}you see that <green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/>?<hidearrow/>"
 )
 director.hide_text_box()
 director.pan_to_right()
 director.show_text_box()
 director.text_box(
     "Edgeworth",
-    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, mr <red>edge worth</red> uhhhhh{B_ST}{SLAM_EDW} {B_M}updated <green>autopsy report</green> ive got you now <red>phoenix right</red>{SPR_EDW_NORMAL_I}{B_ST}",
+    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, <red>edge worth</red>{B_ST}<objection edgeworth/><wait 0.75/> {B_M}uhh{B_ST}{SLAM_EDW} {B_M}updated <green>autopsy report</green> ive got you now <red>phoenix right</red>{SPR_EDW_NORMAL_I}{B_ST}<showarrow/><wait 3/>!<hidearrow/>",
 )
 director.hide_text_box()
 director.set_left_character_sprite(get_sprite_location("phoenix", "sweating-idle"))
 director.pan_to_left()
 director.text_box(
     "Phoenix",
-    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST}",
+    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST}<showarrow/><wait 3/><hidearrow/>",
 )
 director.hide_text_box()
 director.render_movie(-15)
