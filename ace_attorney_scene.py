@@ -63,6 +63,13 @@ class NameBox(SceneObject):
 class DialogueBox(SceneObject):
     time: float = 0
 
+    chars_visible: int = 0
+    current_char_time: float = 0.0
+    max_current_char_time: float = 1 / 30
+
+    current_wait_time: float = 0.0
+    max_wait_time: float = 0.0
+
     def __init__(self, parent: SceneObject, director: "AceAttorneyDirector"):
         super().__init__(parent=parent, name="Dialogue Box", pos=(0, 128, 12))
         self.director = director
@@ -85,7 +92,9 @@ class DialogueBox(SceneObject):
 
         self.use_rtl = False
         self.font_size = 16
-        self.time = 0.0
+
+        self.chars_visible = 0
+        self.current_char_time = 0
 
         self.on_complete: Callable[[], None] = None
 
@@ -102,22 +111,20 @@ class DialogueBox(SceneObject):
         self.font = ImageFont.truetype(self.font_data["path"], self.font_size)
         self.on_complete = on_complete
         self.visible = True
-        self.director.start_voice_blips("male")
 
     def reset(self, hide_box: bool = True):
         self.page = None
         self.time_on_completed = 0.0
-        self.time = 0
 
-    def get_num_visible_chars(self):
-        return int(self.time * 20)
+        self.chars_visible = 0
+        self.current_char_time = 0
 
     def get_all_done(self):
         if self.page is None:
             return False
 
         full_text = self.page.get_raw_text()
-        visible_text_chunks = self.page.get_visible_text(self.get_num_visible_chars())
+        visible_text_chunks = self.page.get_visible_text(self.chars_visible)
         visible_text = visible_text_chunks.get_raw_text()
         full_text_len = len(full_text)
         visible_text_len = len(visible_text)
@@ -128,11 +135,18 @@ class DialogueBox(SceneObject):
             tag_parts = tag.split()
             if tag_parts[0] == "sprite":
                 self.handle_switch_sprite_tag(tag_parts[1], tag_parts[2])
-
             elif tag_parts[0] == "phoenixslam":
                 self.director.play_phoenix_desk_slam()
             elif tag_parts[0] == "edgeworthslam":
                 self.director.play_edgeworth_desk_slam()
+            elif tag_parts[0] == "wait":
+                time_to_wait = float(tag_parts[1])
+                self.max_wait_time = time_to_wait
+                self.current_wait_time = 0.0
+            elif tag_parts[0] == "startblip":
+                self.director.start_voice_blips(tag_parts[1])
+            elif tag_parts[0] == "stopblip":
+                self.director.end_voice_blips()
 
     def handle_switch_sprite_tag(self, position: str, new_path: str):
         if position == "left":
@@ -143,20 +157,31 @@ class DialogueBox(SceneObject):
 
     last_latest_chunk_tags: list[str] = None
     def update(self, delta):
-        self.time += delta
+        # If we're pausing, then don't do anything else
+        if self.max_wait_time != 0.0:
+            self.current_wait_time += delta
+            if self.current_wait_time >= self.max_wait_time:
+                self.max_wait_time = 0.0
+                self.current_wait_time = 0.0
+            return
+
+        self.current_char_time += delta
+        while self.current_char_time >= self.max_current_char_time:
+            self.chars_visible += 1
+            self.current_char_time -= self.max_current_char_time
 
         # Check for actions on current chunk
         if self.page is None:
             return
 
-        text_so_far = self.page.get_visible_text(self.get_num_visible_chars())
+        text_so_far = self.page.get_visible_text(self.chars_visible)
         try:
             latest_chunk_tags = text_so_far.lines[-1][-1].tags
             if latest_chunk_tags != self.last_latest_chunk_tags:
                 self.last_latest_chunk_tags = latest_chunk_tags
                 self.handle_tags()
         except IndexError as e:
-            print(f"{e}")
+            pass
 
         self.arrow.visible = False
         if self.get_all_done():
@@ -183,7 +208,7 @@ class DialogueBox(SceneObject):
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
         if self.page is None:
             return
-        _text = self.page.get_visible_text(self.get_num_visible_chars())
+        _text = self.page.get_visible_text(self.chars_visible)
         for line_no, line in enumerate(_text.lines):
             x_offset = 220 if self.use_rtl else 0
             for chunk_no, chunk in enumerate(line):
@@ -268,6 +293,7 @@ class AceAttorneyDirector(Director):
         self.scene = Scene(256, 192, self.root)
 
     def text_box(self, speaker: str, body: str):
+        print(body)
         for box in get_rich_boxes(body):
             self.sequencer.add_action(
                 DisplayTextInTextBoxAction(self.textbox, speaker, box)
@@ -312,7 +338,7 @@ class AceAttorneyDirector(Director):
         )
 
     def wait(self, t):
-        self.sequencer.add_action(WaitAction(0.5))
+        self.sequencer.add_action(WaitAction(t))
 
     def set_left_character_sprite(self, path):
         self.sequencer.add_action(
@@ -395,32 +421,40 @@ def get_sprite_location(character: str, emotion: str):
 def get_sprite_tag(location: str, character: str, emotion: str):
     return f"<sprite {location} {get_sprite_location(character, emotion)}/>"
 
+SPR_PHX_NORMAL_T = get_sprite_tag('left', 'phoenix', 'normal-talk')
+SPR_PHX_NORMAL_I = get_sprite_tag('left', 'phoenix', 'normal-idle')
+SPR_PHX_SWEAT_T = get_sprite_tag('left', 'phoenix', 'sweating-talk')
+SPR_PHX_SWEAT_I = get_sprite_tag('left', 'phoenix', 'sweating-idle')
+
+SPR_EDW_NORMAL_T = get_sprite_tag('right', 'edgeworth', 'normal-talk')
+SPR_EDW_NORMAL_I = get_sprite_tag('right', 'edgeworth', 'normal-idle')
+
+B_M = "<startblip male/>"
+B_F = "<startblip female/>"
+B_ST = "<stopblip/>"
+
+SLAM_PHX = "<phoenixslam/><wait 0.8/>"
+SLAM_EDW = "<edgeworthslam/><wait 0.8/>"
 
 director = AceAttorneyDirector()
 director.start_music_track("cross-moderato")
 director.text_box(
     "Phoenix",
-    f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}I am going to slam the desk<phoenixslam/> I just did it did you see that was i cool{get_sprite_tag('left', 'phoenix', 'normal-idle')}"
+    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>{B_ST}{SLAM_PHX} I{B_M} just did it did you see that <green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}"
 )
-# director.text_box(
-#     "Phoenix",
-#     f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text<phoenixslam/> is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???",
-# )
 director.hide_text_box()
 director.pan_to_right()
 director.show_text_box()
 director.text_box(
     "Edgeworth",
-    f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh<edgeworthslam/> updated autopsy report ive got you now phoenix right hahaha{get_sprite_tag('right', 'edgeworth', 'normal-idle')}",
+    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, mr <red>edge worth</red> uhhhhh{B_ST}{SLAM_EDW} {B_M}updated <green>autopsy report</green> ive got you now <red>phoenix right</red>{SPR_EDW_NORMAL_I}{B_ST}",
 )
 director.hide_text_box()
-director.wait(0.5)
 director.set_left_character_sprite(get_sprite_location("phoenix", "sweating-idle"))
 director.pan_to_left()
-director.wait(0.5)
 director.text_box(
     "Phoenix",
-    f"{get_sprite_tag('left', 'phoenix', 'sweating-talk')}cool great thanks im so happy{get_sprite_tag('left', 'phoenix', 'sweating-idle')}",
+    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST}",
 )
 director.hide_text_box()
 director.render_movie()

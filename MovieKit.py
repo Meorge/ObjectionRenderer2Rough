@@ -48,7 +48,7 @@ class Scene:
         return self.__done
 
     def receive_message(self, data):
-        print(f"Received message: {data}")
+        ...
 
 class SceneObject:
     x: int = 0
