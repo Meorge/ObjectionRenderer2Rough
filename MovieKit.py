@@ -397,7 +397,7 @@ class Director:
         self.audio_commands: list[dict] = []
         self.time = 0.0
 
-    def render_audio(self, overall_duration, output_location):
+    def render_audio(self, overall_duration, output_location, volume_adjustment: float = 0.0):
         duration_ms = int(overall_duration * 1000)
         base_track = AudioSegment.silent(duration=duration_ms)
 
@@ -429,9 +429,10 @@ class Director:
                 looped_segment = looped_segment.overlay(new_segment, loop=True)
                 base_track = base_track.overlay(looped_segment, offset)
 
+        base_track += volume_adjustment
         base_track.export(f"{output_location}.mp3", bitrate="312k")
 
-    def render_movie(self):
+    def render_movie(self, volume_adjustment: float = 0.0):
         self.time = 0.0
         frame: int = 0
         temp_folder_name = f"output-{int(time())}"
@@ -443,7 +444,7 @@ class Director:
             self.time += 1 / self.fps
             frame += 1
 
-        self.render_audio(frame * (1 / self.fps), temp_folder_name)
+        self.render_audio(frame * (1 / self.fps), temp_folder_name, volume_adjustment)
             
         video_stream = ffmpeg.input(f"{temp_folder_name}/*.png", pattern_type="glob", framerate=self.fps)
         audio_stream = ffmpeg.input(f"{temp_folder_name}.mp3")

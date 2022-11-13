@@ -457,4 +457,4 @@ director.text_box(
     f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST}",
 )
 director.hide_text_box()
-director.render_movie()
+director.render_movie(-15)
