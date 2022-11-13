@@ -129,6 +129,11 @@ class DialogueBox(SceneObject):
             if tag_parts[0] == "sprite":
                 self.handle_switch_sprite_tag(tag_parts[1], tag_parts[2])
 
+            elif tag_parts[0] == "phoenixslam":
+                self.director.play_phoenix_desk_slam()
+            elif tag_parts[0] == "edgeworthslam":
+                self.director.play_edgeworth_desk_slam()
+
     def handle_switch_sprite_tag(self, position: str, new_path: str):
         if position == "left":
             self.director.phoenix.set_filepath(new_path)
@@ -325,11 +330,11 @@ class AceAttorneyDirector(Director):
             "offset": self.time,
             "loop_type": "loop_until_truncated"
         }
+        self.audio_commands.append(self.current_music_track)
 
     def end_music_track(self):
         if self.current_music_track is not None:
             self.current_music_track["end"] = self.time
-            self.audio_commands.append(self.current_music_track)
             self.current_music_track = None
 
     def start_voice_blips(self, gender: str):
@@ -341,11 +346,11 @@ class AceAttorneyDirector(Director):
             "loop_delay": 0.06,
             "loop_type": "loop_complete_only",
         }
+        self.audio_commands.append(self.current_voice_blips)
 
     def end_voice_blips(self):
         if self.current_voice_blips is not None:
             self.current_voice_blips["end"] = self.time
-            self.audio_commands.append(self.current_voice_blips)
             self.current_voice_blips = None
 
     def next_dialogue_sound(self):
@@ -355,6 +360,33 @@ class AceAttorneyDirector(Director):
             "offset": self.time
         })
 
+    def play_phoenix_desk_slam(self):
+        fp_before = self.phoenix.filepath
+        cb_before = self.phoenix.callbacks
+        self.phoenix.set_filepath(
+            get_sprite_location("phoenix", "deskslam"),
+            {
+                0.8: lambda: self.phoenix.set_filepath(fp_before, cb_before)
+            })
+        self.audio_commands.append({
+            "type": "audio",
+            "path": "new_assets/sound/sfx-deskslam.wav",
+            "offset": self.time + 0.15
+        })
+
+    def play_edgeworth_desk_slam(self):
+        fp_before = self.edgeworth.filepath
+        cb_before = self.edgeworth.callbacks
+        self.edgeworth.set_filepath(
+            get_sprite_location("edgeworth", "deskslam"),
+            {
+                0.8: lambda: self.edgeworth.set_filepath(fp_before, cb_before)
+            })
+        self.audio_commands.append({
+            "type": "audio",
+            "path": "new_assets/sound/sfx-deskslam.wav",
+            "offset": self.time + 0.25
+        })
 
 def get_sprite_location(character: str, emotion: str):
     return f"new_assets/character_sprites/{character}/{character}-{emotion}.gif"
@@ -365,16 +397,21 @@ def get_sprite_tag(location: str, character: str, emotion: str):
 
 
 director = AceAttorneyDirector()
+director.start_music_track("cross-moderato")
 director.text_box(
     "Phoenix",
-    f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???",
+    f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}I am going to slam the desk<phoenixslam/> I just did it did you see that was i cool{get_sprite_tag('left', 'phoenix', 'normal-idle')}"
 )
+# director.text_box(
+#     "Phoenix",
+#     f"{get_sprite_tag('left', 'phoenix', 'normal-talk')}Hi here's a <green>bunch of text</green> also {get_sprite_tag('left', 'phoenix', 'sweating-talk')}<red>maybe the rich text<phoenixslam/> is breaking again</red>{get_sprite_tag('left', 'phoenix', 'sweating-idle')}???",
+# )
 director.hide_text_box()
 director.pan_to_right()
 director.show_text_box()
 director.text_box(
     "Edgeworth",
-    f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh updated autopsy report{get_sprite_tag('right', 'edgeworth', 'normal-idle')}",
+    f"{get_sprite_tag('right', 'edgeworth', 'normal-talk')}hey its me, mr edge worth uhhhhh<edgeworthslam/> updated autopsy report ive got you now phoenix right hahaha{get_sprite_tag('right', 'edgeworth', 'normal-idle')}",
 )
 director.hide_text_box()
 director.wait(0.5)
