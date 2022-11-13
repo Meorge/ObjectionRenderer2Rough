@@ -3,8 +3,9 @@ import ffmpeg
 from math_helpers import lerp
 from typing import Callable, Union
 from time import time, sleep
-from os import mkdir
+from os import mkdir, remove
 from shutil import rmtree
+from pydub import AudioSegment
 
 class Scene:
     w: int = 0
@@ -378,14 +379,49 @@ class RunFunctionAction(SequenceAction):
         self.func()
         self.sequencer.action_finished()
 
-
 class Director:
     def __init__(self, scene: Scene = None, fps: float = 30):
         self.sequencer = Sequencer()
         self.scene = scene
         self.fps = fps
+        self.audio_commands: list[dict] = []
+
+    def render_audio(self, overall_duration, output_location):
+        duration_ms = int(overall_duration * 1000)
+        base_track = AudioSegment.silent(duration=duration_ms)
+
+        for audio in self.audio_commands:
+            path = audio["path"]
+            offset = int(audio.get("offset", 0.0) * 1000)
+            loop_type = audio.get("loop_type", "no_loop")
+            loop_delay = int(audio.get("loop_delay", 0) * 1000)
+            end_time = audio.get("end", duration_ms)
+
+            # Segment with silence afterwards
+            new_segment = AudioSegment.from_file(path) + AudioSegment.silent(duration=loop_delay)
+
+            # The segment should be this long
+            duration_of_total_segment = int(end_time * 1000) - offset
+
+            if loop_type == "no_loop":
+                base_track = base_track.overlay(new_segment, offset)
+            elif loop_type == "loop_complete_only":
+                # Keep adding instances of this sound until we can't anymore
+                looped_segment = AudioSegment.empty()
+                while len(looped_segment) <= duration_of_total_segment:
+                    looped_segment += new_segment
+
+                base_track = base_track.overlay(looped_segment, offset)
+
+            elif loop_type == "loop_until_truncated":
+                looped_segment = AudioSegment.silent(duration=duration_of_total_segment)
+                looped_segment = looped_segment.overlay(new_segment, loop=True)
+                base_track = base_track.overlay(looped_segment, offset)
+
+        base_track.export(f"{output_location}.mp3", bitrate="312k")
 
     def render_movie(self):
+        self.time = 0.0
         frame: int = 0
         temp_folder_name = f"output-{int(time())}"
         mkdir(temp_folder_name)
@@ -393,12 +429,19 @@ class Director:
             self.sequencer.update(1 / self.fps)
             self.scene.update(1 / self.fps)
             self.scene.render(f"{temp_folder_name}/{frame:010d}.png")
+            self.time += 1 / self.fps
             frame += 1
+
+        self.render_audio(frame * (1 / self.fps), temp_folder_name)
             
-        stream = ffmpeg.input(f"{temp_folder_name}/*.png", pattern_type="glob", framerate=self.fps)
+        video_stream = ffmpeg.input(f"{temp_folder_name}/*.png", pattern_type="glob", framerate=self.fps)
+        audio_stream = ffmpeg.input(f"{temp_folder_name}.mp3")
+
+        stream = ffmpeg.concat(video_stream, audio_stream, v=1, a=1)
         stream = ffmpeg.output(stream, f"{temp_folder_name}.mp4", vcodec='mpeg4')
         stream = ffmpeg.overwrite_output(stream)
         ffmpeg.run(stream)
 
-        # Delete folder
+        # Delete frames folder and audio track
+        remove(f"{temp_folder_name}.mp3")
         rmtree(temp_folder_name)
