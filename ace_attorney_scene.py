@@ -157,6 +157,12 @@ class DialogueBox(SceneObject):
                 self.director.exclamation.play_holdit(tag_parts[1])
             elif tag_parts[0] == "takethat":
                 self.director.exclamation.play_takethat(tag_parts[1])
+            elif tag_parts[0] == "playsound":
+                self.director.audio_commands.append({
+                    "type": "audio",
+                    "path": f"new_assets/sound/sfx-{tag_parts[1]}.wav",
+                    "offset": self.director.time
+                })
 
     def handle_switch_sprite_tag(self, position: str, new_path: str):
         if position == "left":
@@ -203,12 +209,13 @@ class DialogueBox(SceneObject):
         for line_no, line in enumerate(_text.lines):
             x_offset = 220 if self.use_rtl else 0
             for chunk_no, chunk in enumerate(line):
+                text_str = chunk.text#.replace('\u200B', '')
                 drawing_args = {
                     "xy": (
                         10 + self.x + x_offset,
                         4 + self.y + (self.font_size) * line_no,
                     ),
-                    "text": chunk.text,
+                    "text": text_str,
                     "fill": (255, 0, 255),
                     "anchor": ("r" if self.use_rtl else "l") + "a",
                 }
@@ -226,14 +233,14 @@ class DialogueBox(SceneObject):
                 ctx.text(**drawing_args)
 
                 try:
-                    add_to_x_offset = ctx.textlength(chunk.text, font=self.font)
+                    add_to_x_offset = ctx.textlength(text_str, font=self.font)
                     if chunk_no < len(line) - 1:
                         next_char = line[chunk_no + 1].text[0]
                         add_to_x_offset = ctx.textlength(
                             chunk.text + next_char, self.font
                         ) - ctx.textlength(next_char, self.font)
                 except UnicodeEncodeError:
-                    add_to_x_offset = self.font.getsize(chunk.text)[0]
+                    add_to_x_offset = self.font.getsize(text_str)[0]
 
                 x_offset += (add_to_x_offset * -1) if self.use_rtl else add_to_x_offset
 
@@ -246,8 +253,13 @@ class ExclamationObject(ImageObject):
             )
         self.director = director
 
-    def get_clip_exists(self, type: str, speaker: str):
-        return exists(f"new_assets/exclamations/{type}-{speaker}.mp3")
+    def get_exclamation_path(self, type: str, speaker: str):
+        base_name = f"new_assets/exclamations/{type}-{speaker}"
+        if exists(f"{base_name}.mp3"):
+            return f"{base_name}.mp3"
+        elif exists(f"{base_name}.wav"):
+            return f"{base_name}.wav"
+        return f"new_assets/exclamations/objection-generic.wav"
 
     def play_objection(self, speaker: str):
         self.play_exclamation("objection", speaker)
@@ -265,18 +277,13 @@ class ExclamationObject(ImageObject):
                 0.7: lambda: self.set_filepath(None)
             })
 
-        if self.get_clip_exists(type, speaker):
-            self.director.audio_commands.append({
-                "type": "audio",
-                "path": f"new_assets/exclamations/{type}-{speaker}.mp3",
-                "offset": self.director.time
-            })
-        else:
-            self.director.audio_commands.append({
-                "type": "audio",
-                "path": f"new_assets/exclamations/{type}-generic.mp3",
-                "offset": self.director.time
-            })
+        audio_path = self.get_exclamation_path(type, speaker)
+
+        self.director.audio_commands.append({
+            "type": "audio",
+            "path": audio_path,
+            "offset": self.director.time
+        })
 
     
 
@@ -333,6 +340,8 @@ class AceAttorneyDirector(Director):
 
     def text_box(self, speaker: str, body: str):
         for box in get_rich_boxes(body):
+            print(body)
+            print()
             self.sequencer.add_action(
                 DisplayTextInTextBoxAction(self.textbox, speaker, box)
             )
@@ -478,21 +487,25 @@ director = AceAttorneyDirector()
 director.start_music_track("cross-moderato")
 director.text_box(
     "Phoenix",
-    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>{B_ST}{SLAM_PHX} I{B_M} just did it did{B_ST}<objection phoenix/><wait 0.75/> {B_M}you see that <green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/>?<hidearrow/>"
+    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>" + \
+    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/> {B_ST}<objection phoenix/><wait 0.8/> " + \
+    f"{SLAM_PHX} I{B_M}{SPR_PHX_NORMAL_T} just did it{B_ST}<holdit phoenix/><wait 0.8/>" + \
+    f" {B_M}did you see that " + \
+    f"<green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/>?<hidearrow/><playsound pichoop/>"
 )
 director.hide_text_box()
 director.pan_to_right()
 director.show_text_box()
 director.text_box(
     "Edgeworth",
-    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, <red>edge worth</red>{B_ST}<objection edgeworth/><wait 0.75/> {B_M}uhh{B_ST}{SLAM_EDW} {B_M}updated <green>autopsy report</green> ive got you now <red>phoenix right</red>{SPR_EDW_NORMAL_I}{B_ST}<showarrow/><wait 3/>!<hidearrow/>",
+    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, <red>edge worth</red>{B_ST}<objection edgeworth/><wait 0.8/> {SLAM_EDW}<wait 0.8/> {B_M}uhh updated <green>autopsy report</green> ive got you now <red>phoenix right!{B_ST}<takethat edgeworth/><wait 0.8/></red> {SPR_EDW_NORMAL_I}<showarrow/><wait 3/> <hidearrow/><playsound pichoop/>",
 )
 director.hide_text_box()
 director.set_left_character_sprite(get_sprite_location("phoenix", "sweating-idle"))
 director.pan_to_left()
 director.text_box(
     "Phoenix",
-    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST}<showarrow/><wait 3/><hidearrow/>",
+    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST} <showarrow/><wait 3/>.<hidearrow/><playsound pichoop/>",
 )
 director.hide_text_box()
 director.render_movie(-15)
