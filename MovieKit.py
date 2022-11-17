@@ -402,6 +402,9 @@ class Director:
         self.audio_commands: list[dict] = []
         self.time = 0.0
 
+    def update(self, delta: float):
+        ...
+
     def render_audio(self, overall_duration, output_location, volume_adjustment: float = 0.0):
         duration_ms = int(overall_duration * 1000)
         base_track = AudioSegment.silent(duration=duration_ms)
@@ -443,6 +446,7 @@ class Director:
         temp_folder_name = f"output-{int(time())}"
         mkdir(temp_folder_name)
         while not self.sequencer.is_done():
+            self.update(1 / self.fps)
             self.sequencer.update(1 / self.fps)
             self.scene.update(1 / self.fps)
             self.scene.render(f"{temp_folder_name}/{frame:010d}.png")

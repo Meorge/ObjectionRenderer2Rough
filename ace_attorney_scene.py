@@ -189,6 +189,7 @@ class DialogueBox(SceneObject):
         if self.page is None:
             return
 
+        print(self.page)
         text_so_far = self.page.get_visible_text(self.chars_visible)
         try:
             latest_chunk_tags = text_so_far.lines[-1][-1].tags
@@ -340,8 +341,6 @@ class AceAttorneyDirector(Director):
 
     def text_box(self, speaker: str, body: str):
         for box in get_rich_boxes(body):
-            print(body)
-            print()
             self.sequencer.add_action(
                 DisplayTextInTextBoxAction(self.textbox, speaker, box)
             )
@@ -488,10 +487,10 @@ director.start_music_track("cross-moderato")
 director.text_box(
     "Phoenix",
     f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>" + \
-    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/> {B_ST}<objection phoenix/><wait 0.8/> " + \
-    f"{SLAM_PHX} I{B_M}{SPR_PHX_NORMAL_T} just did it{B_ST}<holdit phoenix/><wait 0.8/>" + \
+    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/>{B_ST}<objection phoenix/><wait 0.8/>" + \
+    f"{SLAM_PHX}{B_M}{SPR_PHX_NORMAL_T} I just did it{B_ST}<holdit phoenix/><wait 0.8/>" + \
     f" {B_M}did you see that " + \
-    f"<green>was i cool</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/>?<hidearrow/><playsound pichoop/>"
+    f"<green>was i cool?</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/><hidearrow/><playsound pichoop/>"
 )
 director.hide_text_box()
 director.pan_to_right()
