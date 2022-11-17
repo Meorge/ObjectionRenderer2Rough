@@ -3,12 +3,7 @@ from MovieKit import (
     SceneObject,
     ImageObject,
     MoveSceneObjectAction,
-    SetSceneObjectPositionAction,
-    WaitAction,
-    SetImageObjectSpriteAction,
     SimpleTextObject,
-    SequenceAction,
-    RunFunctionAction,
     Director,
 )
 from math_helpers import ease_in_out_cubic
@@ -18,6 +13,7 @@ from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable, Optional
 from os.path import exists
+from shlex import split
 
 class NameBox(SceneObject):
     def __init__(self, parent: SceneObject, pos: tuple[int, int, int]):
@@ -224,16 +220,24 @@ class AceAttorneyDirector(Director):
 
         self.scene = Scene(256, 192, self.root)
 
-    def set_current_pages(self, body: str):
-        self.pages = get_rich_boxes(body)
+    def set_current_pages(self, pages: list[DialoguePage]):
+        self.pages = pages
         self.page_index = 0
-
         self.local_time = 0
+        self.cur_time_for_char = 0.0
 
     cur_time_for_char: float = 0.0
     max_time_for_char: float = 0.03
 
     def update(self, delta: float):
+        # If the current page index is greater than the number of pages, then we've
+        # used all the pages - in other words, we're done.
+        if self.page_index >= len(self.pages):
+            self.end_music_track()
+            self.end_voice_blips()
+            self.is_done = True
+            return
+
         # Find which page we are on
         self.current_page = self.pages[self.page_index]
         self.textbox.page = self.current_page
@@ -257,7 +261,7 @@ class AceAttorneyDirector(Director):
             # Handle actions
             # Most actions can be taken care of instantly and then marked complete
             # Wait actions need the timer to fill up before they can be marked complete
-            action_split = current_dialogue_obj.name.split(' ')
+            action_split = split(current_dialogue_obj.name)
             match action_split:
                 case ["startblip", voice_type]:
                     self.start_voice_blips(voice_type)
@@ -302,11 +306,15 @@ class AceAttorneyDirector(Director):
                     current_dialogue_obj.completed = True
 
                 case ["showbox"]:
-                    self.show_text_box()
+                    self.textbox.show()
                     current_dialogue_obj.completed = True
 
                 case ["hidebox"]:
-                    self.hide_text_box()
+                    self.textbox.hide()
+                    current_dialogue_obj.completed = True
+
+                case ["nametag", name]:
+                    self.textbox.namebox.set_text(name)
                     current_dialogue_obj.completed = True
 
                 case ["sound", sound_path]:
@@ -317,27 +325,42 @@ class AceAttorneyDirector(Director):
                     })
                     current_dialogue_obj.completed = True
 
-                case _:
+                case ["music", "start", music_name]:
+                    self.start_music_track(music_name)
                     current_dialogue_obj.completed = True
 
-                
+                case ["music", "stop"]:
+                    self.end_music_track()
+                    current_dialogue_obj.completed = True
+
+                case ["cut", position]:
+                    if position == "left":
+                        self.cut_to_left()
+                    elif position == "right":
+                        self.cut_to_right()
+                    current_dialogue_obj.completed = True
+
+                case ["pan", position]:
+                    if position == "left":
+                        self.pan_to_left()
+                    elif position == "right":
+                        self.pan_to_right()
+                    current_dialogue_obj.completed = True
+
+                case _:
+                    current_dialogue_obj.completed = True
+     
         elif isinstance(current_dialogue_obj, DialogueTextLineBreak):
             # Does anything need to be done here? I think this can be handled
             # entirely in render()
             current_dialogue_obj.completed = True
 
         elif current_dialogue_obj is None:
-            print(f"All done!!")
-            self.is_done = True
-
-    def show_text_box(self):
-        self.sequencer.add_action(RunFunctionAction(lambda: self.textbox.show()))
-
-    def hide_text_box(self):
-        self.sequencer.add_action(RunFunctionAction(lambda: self.textbox.hide()))
+            # Done with the current page - let's try to get the next page!
+            self.page_index += 1
 
     def pan_to_right(self):
-        self.sequencer.add_action(
+        self.sequencer.run_action(
             MoveSceneObjectAction(
                 target_value=(-1290 + 256, 0),
                 duration=1.0,
@@ -347,7 +370,7 @@ class AceAttorneyDirector(Director):
         )
 
     def pan_to_left(self):
-        self.sequencer.add_action(
+        self.sequencer.run_action(
             MoveSceneObjectAction(
                 target_value=(0, 0),
                 duration=1.0,
@@ -357,24 +380,10 @@ class AceAttorneyDirector(Director):
         )
 
     def cut_to_left(self):
-        self.sequencer.add_action(
-            SetSceneObjectPositionAction(target_value=(0, 0), scene_object=self.bg)
-        )
+        self.bg.set_x(0)
 
     def cut_to_right(self):
-        self.sequencer.add_action(
-            SetSceneObjectPositionAction(
-                target_value=(-1920 + 256, 0), scene_object=self.bg
-            )
-        )
-
-    def wait(self, t):
-        self.sequencer.add_action(WaitAction(t))
-
-    def set_left_character_sprite(self, path):
-        self.sequencer.add_action(
-            SetImageObjectSpriteAction(new_filepath=path, image_object=self.phoenix)
-        )
+        self.bg.set_x(-1296 + 256)
 
     current_music_track: Optional[dict] = None
     current_voice_blips: Optional[dict] = None
@@ -452,32 +461,40 @@ def get_sprite_location(character: str, emotion: str):
 def get_sprite_tag(location: str, character: str, emotion: str):
     return f"<sprite {location} {get_sprite_location(character, emotion)}/>"
 
-SPR_PHX_NORMAL_T = get_sprite_tag('left', 'phoenix', 'normal-talk')
-SPR_PHX_NORMAL_I = get_sprite_tag('left', 'phoenix', 'normal-idle')
-SPR_PHX_SWEAT_T = get_sprite_tag('left', 'phoenix', 'sweating-talk')
-SPR_PHX_SWEAT_I = get_sprite_tag('left', 'phoenix', 'sweating-idle')
-
-SPR_EDW_NORMAL_T = get_sprite_tag('right', 'edgeworth', 'normal-talk')
-SPR_EDW_NORMAL_I = get_sprite_tag('right', 'edgeworth', 'normal-idle')
-
 B_M = "<startblip male/>"
 B_F = "<startblip female/>"
 B_ST = "<stopblip/>"
 
-SLAM_PHX = "<deskslam phoenix/><wait 0.8/>"
-SLAM_EDW = "<deskslam edgeworth/><wait 0.8/>"
+SPR_PHX_NORMAL_T = B_M + get_sprite_tag('left', 'phoenix', 'normal-talk')
+SPR_PHX_NORMAL_I = B_ST + get_sprite_tag('left', 'phoenix', 'normal-idle')
+SPR_PHX_SWEAT_T = B_M + get_sprite_tag('left', 'phoenix', 'sweating-talk')
+SPR_PHX_SWEAT_I = B_ST + get_sprite_tag('left', 'phoenix', 'sweating-idle')
 
-OBJ_PHX = "<bubble objection phoenix/><wait 0.8/>"
-HDI_PHX = "<bubble holdit phoenix/><wait 0.8/>"
+SPR_EDW_NORMAL_T = B_M + get_sprite_tag('right', 'edgeworth', 'normal-talk')
+SPR_EDW_NORMAL_I = B_ST + get_sprite_tag('right', 'edgeworth', 'normal-idle')
 
-END_BOX = "<showarrow/><wait 3/><hidearrow/><sound pichoop/>"
+SLAM_PHX = B_ST + "<deskslam phoenix/><wait 0.8/>"
+SLAM_EDW = B_ST + "<deskslam edgeworth/><wait 0.8/>"
 
-test_dialogue = f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>" + \
-    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/>{B_ST}{OBJ_PHX}" + \
-    f"{SLAM_PHX}{B_M}{SPR_PHX_NORMAL_T} I just did it{B_ST}{SPR_PHX_NORMAL_I}{HDI_PHX}" + \
-    f" {SPR_PHX_NORMAL_T}{B_M}did you see that " + \
-    f"<green>was i cool?</green>{SPR_PHX_NORMAL_I}{B_ST}{END_BOX}<hidebox/><wait 1/>"
+OBJ_PHX = B_ST + "<bubble objection phoenix/><wait 0.8/>"
+HDI_PHX = B_ST + "<bubble holdit phoenix/><wait 0.8/>"
 
+END_BOX = "<showarrow/><wait 2/><hidearrow/><sound pichoop/>"
+
+test_dialogue_1 = f"<nametag Phoenix right/><music start cross-moderato/><showbox/>{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>!" + \
+    f"{SPR_PHX_NORMAL_I}<wait 0.25/>{OBJ_PHX}" + \
+    f"{SLAM_PHX}{SPR_PHX_NORMAL_T} I just did it!{SPR_PHX_NORMAL_I}{HDI_PHX}" + \
+    f" {SPR_PHX_NORMAL_T}Did you see that?{SPR_PHX_NORMAL_I}<wait 0.5/>" + \
+    f" {SPR_PHX_NORMAL_T}<green>Was i cool?</green>{SPR_PHX_NORMAL_I}{END_BOX}<hidebox/><wait 0.5/>"
+
+test_dialogue_2 = f"<pan right/><wait 1/><nametag \"Mr edge worth\"/><showbox/>{SPR_EDW_NORMAL_T}Yes, I saw it.{SPR_EDW_NORMAL_I}<wait 0.1/> " + \
+    f"{SPR_EDW_NORMAL_T}But it was not very impressive.{SPR_EDW_NORMAL_I}<wait 0.15/> " + \
+    f"{SPR_EDW_NORMAL_T}Look, I can do the same thing.{SLAM_EDW} {SPR_EDW_NORMAL_T}See?{SPR_EDW_NORMAL_I}{END_BOX}"
+
+
+pages: list[DialoguePage] = []
+pages.extend(get_rich_boxes(test_dialogue_1))
+pages.extend(get_rich_boxes(test_dialogue_2))
 director = AceAttorneyDirector()
-director.set_current_pages(test_dialogue)
+director.set_current_pages(pages)
 director.render_movie(-15)

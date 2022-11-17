@@ -158,7 +158,7 @@ class ImageObject(SceneObject):
     width: int = None
     height: int = None
 
-    image_data: list[tuple[Image.Image, float]] = []
+    image_data: Image.Image | list[tuple[Image.Image, float]] = []
 
     current_frame: Image = None
     callbacks: dict = {}
@@ -251,33 +251,21 @@ class SimpleTextObject(SceneObject):
         ctx.text(**args)
 
 class Sequencer:
-    scene: Scene
     actions: list['SequenceAction'] = []
-    current_action: 'SequenceAction' = None
 
-    def add_action(self, action: 'SequenceAction'):
+    def run_action(self, action: 'SequenceAction'):
         self.actions.append(action)
         action.sequencer = self
 
-    def is_done(self):
-        return len(self.actions) <= 0
-
     def update(self, delta):
-        if self.is_done():
-            return False
-        new_current_action = self.actions[0]
-        if new_current_action != self.current_action:
-            new_current_action.start()
-        self.current_action = new_current_action
-        self.current_action.update(delta)
-        return True
-
-    def action_finished(self):
-        if len(self.actions) > 0:
-            self.actions.pop(0)
+        self.actions = [action for action in self.actions if not action.completed]
+        for action in self.actions:
+            action.update(delta)
+            
 
 class SequenceAction:
     sequencer: Sequencer
+    completed: bool = False
 
     def start(self):
         ...
@@ -290,10 +278,9 @@ class MoveSceneObjectAction(SequenceAction):
     duration: float = 0.0
     
     scene_object: SceneObject = None
-    ease_function = lambda self, x: x
+    ease_function = lambda _, x: x
 
-    on_complete = lambda self: ...
-    completed: bool = False
+    on_complete = None
 
     time_passed: float = 0.0
     current_value: float = 0
@@ -308,8 +295,7 @@ class MoveSceneObjectAction(SequenceAction):
         self.scene_object = scene_object
         if ease_function is not None:
             self.ease_function = ease_function
-        if on_complete_function is not None:
-            self.on_complete = on_complete_function
+        self.on_complete = on_complete_function
 
     def update(self, delta):
         if self.time_passed == 0:
@@ -328,71 +314,6 @@ class MoveSceneObjectAction(SequenceAction):
             self.completed = True
             if self.on_complete is not None:
                 self.on_complete()
-            self.sequencer.action_finished()
-
-class SetSceneObjectPositionAction(SequenceAction):
-    target_value: tuple[int, int] = (0,0)
-
-    scene_object: SceneObject = None
-    on_complete: Callable[[], None] = lambda self: ...
-    completed: bool = False
-
-    def __init__(self, target_value: tuple[int, int],
-        scene_object: SceneObject = None,
-        on_complete_function: Callable[[], None] = None):
-        self.target_value = target_value
-        self.scene_object = scene_object
-        if on_complete_function is not None:
-            self.on_complete = on_complete_function
-
-    def update(self, delta):
-        self.scene_object.set_x(self.target_value[0])
-        self.scene_object.set_y(self.target_value[1])
-        if self.on_complete is not None:
-            self.on_complete()
-        self.sequencer.action_finished()
-
-class WaitAction(SequenceAction):
-    duration: float = 0.0
-    time_passed: float = 0.0
-    on_complete: Callable[[], None] = lambda self: ...
-    completed: bool = False
-
-    def __init__(self, duration: float,
-        on_complete_function: Callable[[], None] = None):
-        self.duration = duration
-        if on_complete_function is not None:
-            self.on_complete = on_complete_function
-
-    def update(self, delta):
-        self.time_passed += delta
-        if self.time_passed > self.duration:
-            self.completed = True
-            if self.on_complete is not None:
-                self.on_complete()
-            self.sequencer.action_finished()
-
-class SetImageObjectSpriteAction(SequenceAction):
-    new_filepath: str = ""
-    image_object: ImageObject = None
-
-    def __init__(self, new_filepath: str, image_object: ImageObject):
-        self.new_filepath = new_filepath
-        self.image_object = image_object
-
-    def update(self, delta):
-        self.image_object.set_filepath(self.new_filepath)
-        self.sequencer.action_finished()
-
-class RunFunctionAction(SequenceAction):
-    func: Callable[[], None] = None
-
-    def __init__(self, func: Callable[[], None]):
-        self.func = func
-
-    def update(self, delta):
-        self.func()
-        self.sequencer.action_finished()
 
 class Director:
     def __init__(self, scene: Scene = None, fps: float = 30):
