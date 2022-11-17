@@ -442,10 +442,11 @@ class Director:
 
     def render_movie(self, volume_adjustment: float = 0.0):
         self.time = 0.0
+        self.is_done = False
         frame: int = 0
         temp_folder_name = f"output-{int(time())}"
         mkdir(temp_folder_name)
-        while not self.sequencer.is_done():
+        while not self.is_done:
             self.update(1 / self.fps)
             self.sequencer.update(1 / self.fps)
             self.scene.update(1 / self.fps)

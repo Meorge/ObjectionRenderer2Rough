@@ -36,7 +36,7 @@ def get_font_score(font, text):
 def get_best_font(text, font_array):
     best_font = font_array[-1]
     best_font_points = 0
-    text = text.replace('\n', '').replace('\r', '').replace('\t', '')
+    text = text.replace('\n', '').replace('\r', '').replace('\t', '').replace('\u200B', '')
     for font in font_array:
         pts = get_font_score(font, text)
         if pts > best_font_points:
@@ -53,7 +53,7 @@ def fit_words_within_width(words: Union[list[str], str], font: ImageFont.FreeTyp
     space = " " if insert_space else ""
     for word in words:
         last_sentence = new_text.split("\n")[-1] + word + space
-        if font.getlength(text=last_sentence) >= 240:
+        if font.getlength(text=last_sentence) >= 220:
             if new_text.split("\n")[-1] != "":
                 new_text += "\n"
             new_text += fit_words_within_width(word, font, False) + space

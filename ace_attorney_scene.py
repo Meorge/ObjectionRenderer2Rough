@@ -13,7 +13,7 @@ from MovieKit import (
 )
 from math_helpers import ease_in_out_cubic
 from PIL import Image, ImageDraw, ImageFont
-from parse_tags import DialoguePage, get_rich_boxes, DialogueTextChunk
+from parse_tags import DialoguePage, get_rich_boxes, DialogueTextChunk, DialogueAction, DialogueTextLineBreak
 from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable, Optional
@@ -59,7 +59,6 @@ class NameBox(SceneObject):
         self.namebox_c.width = length + 4
         self.namebox_r.x = 1 + length + 4
 
-
 class DialogueBox(SceneObject):
     time: float = 0
 
@@ -90,6 +89,8 @@ class DialogueBox(SceneObject):
 
         self.page: DialoguePage = None
 
+        self.font_data = {}
+        self.font: ImageFont.ImageFont = None
         self.use_rtl = False
         self.font_size = 16
 
@@ -98,119 +99,21 @@ class DialogueBox(SceneObject):
 
         self.on_complete: Callable[[], None] = None
 
-    def set_page(
-        self,
-        page: DialoguePage,
-        character_name: str,
-        on_complete: Callable[[], None] = None,
-    ):
-        self.reset()
-        self.namebox.set_text(character_name)
-        self.page = page
-        self.font_data = get_best_font(self.page.get_raw_text(), FONT_ARRAY)
-        self.font = ImageFont.truetype(self.font_data["path"], self.font_size)
-        self.on_complete = on_complete
-        self.visible = True
-
-    def reset(self, hide_box: bool = True):
-        self.page = None
-        self.time_on_completed = 0.0
-
-        self.chars_visible = 0
-        self.current_char_time = 0
-
-    def get_all_done(self):
-        if self.page is None:
-            return False
-
-        full_text = self.page.get_raw_text()
-        visible_text_chunks = self.page.get_visible_text(self.chars_visible)
-        visible_text = visible_text_chunks.get_raw_text()
-        full_text_len = len(full_text)
-        visible_text_len = len(visible_text)
-        return full_text_len == visible_text_len
-
-    def handle_tags(self):
-        for tag in self.last_latest_chunk_tags:
-            tag_parts = tag.split()
-            if tag_parts[0] == "sprite":
-                self.handle_switch_sprite_tag(tag_parts[1], tag_parts[2])
-            elif tag_parts[0] == "phoenixslam":
-                self.director.play_phoenix_desk_slam()
-            elif tag_parts[0] == "edgeworthslam":
-                self.director.play_edgeworth_desk_slam()
-            elif tag_parts[0] == "wait":
-                time_to_wait = float(tag_parts[1])
-                self.max_wait_time = time_to_wait
-                self.current_wait_time = 0.0
-            elif tag_parts[0] == "startblip":
-                self.director.start_voice_blips(tag_parts[1])
-            elif tag_parts[0] == "stopblip":
-                self.director.end_voice_blips()
-            elif tag_parts[0] == "showarrow":
-                self.director.textbox.arrow.show()
-            elif tag_parts[0] == "hidearrow":
-                self.director.textbox.arrow.hide()
-            elif tag_parts[0] == "objection":
-                self.director.exclamation.play_objection(tag_parts[1])
-            elif tag_parts[0] == "holdit":
-                self.director.exclamation.play_holdit(tag_parts[1])
-            elif tag_parts[0] == "takethat":
-                self.director.exclamation.play_takethat(tag_parts[1])
-            elif tag_parts[0] == "playsound":
-                self.director.audio_commands.append({
-                    "type": "audio",
-                    "path": f"new_assets/sound/sfx-{tag_parts[1]}.wav",
-                    "offset": self.director.time
-                })
-
-    def handle_switch_sprite_tag(self, position: str, new_path: str):
-        if position == "left":
-            self.director.phoenix.set_filepath(new_path)
-        elif position == "right":
-            self.director.edgeworth.set_filepath(new_path)
-
-    last_latest_chunk_tags: list[str] = None
     def update(self, delta):
-        # If we're pausing, then don't do anything else
-        if self.max_wait_time != 0.0:
-            self.current_wait_time += delta
-            if self.current_wait_time >= self.max_wait_time:
-                self.max_wait_time = 0.0
-                self.current_wait_time = 0.0
-            return
-
-        self.current_char_time += delta
-        while self.current_char_time >= self.max_current_char_time:
-            self.chars_visible += 1
-            self.current_char_time -= self.max_current_char_time
-
-        # Check for actions on current chunk
-        if self.page is None:
-            return
-
-        print(self.page)
-        text_so_far = self.page.get_visible_text(self.chars_visible)
-        try:
-            latest_chunk_tags = text_so_far.lines[-1][-1].tags
-            if latest_chunk_tags != self.last_latest_chunk_tags:
-                self.last_latest_chunk_tags = latest_chunk_tags
-                self.handle_tags()
-        except IndexError as e:
-            pass
-
-        if self.get_all_done():
-            self.reset()
-            self.on_complete()
+        ...
 
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
         if self.page is None:
             return
-        _text = self.page.get_visible_text(self.chars_visible)
-        for line_no, line in enumerate(_text.lines):
-            x_offset = 220 if self.use_rtl else 0
-            for chunk_no, chunk in enumerate(line):
-                text_str = chunk.text#.replace('\u200B', '')
+
+        line_no = 0
+        x_offset = 220 if self.use_rtl else 0
+        for command in self.page.commands:
+            if isinstance(command, DialogueTextLineBreak):
+                line_no += 1
+                x_offset = 220 if self.use_rtl else 0
+            elif isinstance(command, DialogueTextChunk):
+                text_str = command.text[:command.position]
                 drawing_args = {
                     "xy": (
                         10 + self.x + x_offset,
@@ -221,11 +124,11 @@ class DialogueBox(SceneObject):
                     "anchor": ("r" if self.use_rtl else "l") + "a",
                 }
 
-                if len(chunk.tags) == 0:
+                if len(command.tags) == 0:
                     drawing_args["fill"] = (255, 255, 255)
                 else:
                     drawing_args["fill"] = TEXT_COLORS.get(
-                        chunk.tags[-1], (255, 255, 255)
+                        command.tags[-1], (255, 255, 255)
                     )
 
                 if self.font is not None:
@@ -234,12 +137,11 @@ class DialogueBox(SceneObject):
                 ctx.text(**drawing_args)
 
                 try:
+                    # TODO: I think the Pillow docs say this isn't actually
+                    # how you should get the true text length due to kerning,
+                    # but I'm too tired right now to do it the "right" way
+                    # and so far it doesn't seem to have broken significantly.
                     add_to_x_offset = ctx.textlength(text_str, font=self.font)
-                    if chunk_no < len(line) - 1:
-                        next_char = line[chunk_no + 1].text[0]
-                        add_to_x_offset = ctx.textlength(
-                            chunk.text + next_char, self.font
-                        ) - ctx.textlength(next_char, self.font)
                 except UnicodeEncodeError:
                     add_to_x_offset = self.font.getsize(text_str)[0]
 
@@ -286,23 +188,6 @@ class ExclamationObject(ImageObject):
             "offset": self.director.time
         })
 
-    
-
-
-class DisplayTextInTextBoxAction(SequenceAction):
-    def __init__(self, tb: DialogueBox, character_name: str, page: DialoguePage):
-        self.tb = tb
-        self.character_name = character_name
-        self.page = page
-
-    def start(self):
-        self.tb.set_page(self.page, self.character_name, self.sequencer.action_finished)
-
-    def update(self, delta):
-        if self.tb.time_on_completed >= 1:
-            self.sequencer.action_finished()
-
-
 class AceAttorneyDirector(Director):
     def __init__(self, fps: float = 30):
         super().__init__(None, fps)
@@ -339,11 +224,111 @@ class AceAttorneyDirector(Director):
 
         self.scene = Scene(256, 192, self.root)
 
-    def text_box(self, speaker: str, body: str):
-        for box in get_rich_boxes(body):
-            self.sequencer.add_action(
-                DisplayTextInTextBoxAction(self.textbox, speaker, box)
-            )
+    def set_current_pages(self, body: str):
+        self.pages = get_rich_boxes(body)
+        self.page_index = 0
+
+        self.local_time = 0
+
+    cur_time_for_char: float = 0.0
+    max_time_for_char: float = 0.03
+
+    def update(self, delta: float):
+        # Find which page we are on
+        self.current_page = self.pages[self.page_index]
+        self.textbox.page = self.current_page
+        self.textbox.font_data = get_best_font(self.current_page.get_raw_text(), FONT_ARRAY)
+        self.textbox.font = ImageFont.truetype(self.textbox.font_data["path"], 16)
+
+        # Within that page, get the current object
+        current_dialogue_obj = self.current_page.get_current_item()
+
+        if isinstance(current_dialogue_obj, DialogueTextChunk):
+            self.cur_time_for_char += delta
+            if self.cur_time_for_char >= self.max_time_for_char:
+                # Increment the progress through the current dialogue object
+                # by one. This will make it render more characters in render()
+                current_dialogue_obj.position += 1
+                self.cur_time_for_char = 0
+                if current_dialogue_obj.position >= len(current_dialogue_obj.text):
+                    current_dialogue_obj.completed = True
+
+        elif isinstance(current_dialogue_obj, DialogueAction):
+            # Handle actions
+            # Most actions can be taken care of instantly and then marked complete
+            # Wait actions need the timer to fill up before they can be marked complete
+            action_split = current_dialogue_obj.name.split(' ')
+            match action_split:
+                case ["startblip", voice_type]:
+                    self.start_voice_blips(voice_type)
+                    current_dialogue_obj.completed = True
+
+                case ["stopblip"]:
+                    self.end_voice_blips()
+                    current_dialogue_obj.completed = True
+
+                case ["sprite", position, path]:
+                    if position == "left":
+                        self.phoenix.set_filepath(path)
+                    elif position == "right":
+                        self.edgeworth.set_filepath(path)
+                    else:
+                        print(f"Error in sprite command: unknown position \"{position}\"")
+                    current_dialogue_obj.completed = True
+
+                case ["wait", duration_str]:
+                    self.cur_time_for_char += delta
+                    if self.cur_time_for_char >= float(duration_str):
+                        current_dialogue_obj.completed = True
+                        self.cur_time_for_char = 0.0
+
+                case ["bubble", exclamation_type, character]:
+                    self.exclamation.play_exclamation(exclamation_type, character)
+                    current_dialogue_obj.completed = True
+
+                case ["deskslam", character]:
+                    if character == "phoenix":
+                        self.play_phoenix_desk_slam()
+                    elif character == "edgeworth":
+                        self.play_edgeworth_desk_slam()
+                    current_dialogue_obj.completed = True
+
+                case ["showarrow"]:
+                    self.textbox.arrow.visible = True
+                    current_dialogue_obj.completed = True
+                
+                case ["hidearrow"]:
+                    self.textbox.arrow.visible = False
+                    current_dialogue_obj.completed = True
+
+                case ["showbox"]:
+                    self.show_text_box()
+                    current_dialogue_obj.completed = True
+
+                case ["hidebox"]:
+                    self.hide_text_box()
+                    current_dialogue_obj.completed = True
+
+                case ["sound", sound_path]:
+                    self.audio_commands.append({
+                        "type": "audio",
+                        "path": f"new_assets/sound/sfx-{sound_path}.wav",
+                        "offset": self.time
+                    })
+                    current_dialogue_obj.completed = True
+
+                case _:
+                    current_dialogue_obj.completed = True
+
+                
+        elif isinstance(current_dialogue_obj, DialogueTextLineBreak):
+            # Does anything need to be done here? I think this can be handled
+            # entirely in render()
+            current_dialogue_obj.completed = True
+
+        elif current_dialogue_obj is None:
+            print(f"All done!!")
+            self.is_done = True
 
     def show_text_box(self):
         self.sequencer.add_action(RunFunctionAction(lambda: self.textbox.show()))
@@ -479,32 +464,20 @@ B_M = "<startblip male/>"
 B_F = "<startblip female/>"
 B_ST = "<stopblip/>"
 
-SLAM_PHX = "<phoenixslam/><wait 0.8/>"
-SLAM_EDW = "<edgeworthslam/><wait 0.8/>"
+SLAM_PHX = "<deskslam phoenix/><wait 0.8/>"
+SLAM_EDW = "<deskslam edgeworth/><wait 0.8/>"
+
+OBJ_PHX = "<bubble objection phoenix/><wait 0.8/>"
+HDI_PHX = "<bubble holdit phoenix/><wait 0.8/>"
+
+END_BOX = "<showarrow/><wait 3/><hidearrow/><sound pichoop/>"
+
+test_dialogue = f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>" + \
+    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/>{B_ST}{OBJ_PHX}" + \
+    f"{SLAM_PHX}{B_M}{SPR_PHX_NORMAL_T} I just did it{B_ST}{SPR_PHX_NORMAL_I}{HDI_PHX}" + \
+    f" {SPR_PHX_NORMAL_T}{B_M}did you see that " + \
+    f"<green>was i cool?</green>{SPR_PHX_NORMAL_I}{B_ST}{END_BOX}<hidebox/><wait 1/>"
 
 director = AceAttorneyDirector()
-director.start_music_track("cross-moderato")
-director.text_box(
-    "Phoenix",
-    f"{B_M}{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>" + \
-    f"{SPR_PHX_NORMAL_I}{B_ST}<wait 1/>{B_ST}<objection phoenix/><wait 0.8/>" + \
-    f"{SLAM_PHX}{B_M}{SPR_PHX_NORMAL_T} I just did it{B_ST}<holdit phoenix/><wait 0.8/>" + \
-    f" {B_M}did you see that " + \
-    f"<green>was i cool?</green>{SPR_PHX_NORMAL_I}{B_ST}<showarrow/><wait 3/><hidearrow/><playsound pichoop/>"
-)
-director.hide_text_box()
-director.pan_to_right()
-director.show_text_box()
-director.text_box(
-    "Edgeworth",
-    f"{B_M}{SPR_EDW_NORMAL_T}hey its me, <red>edge worth</red>{B_ST}<objection edgeworth/><wait 0.8/> {SLAM_EDW}<wait 0.8/> {B_M}uhh updated <green>autopsy report</green> ive got you now <red>phoenix right!{B_ST}<takethat edgeworth/><wait 0.8/></red> {SPR_EDW_NORMAL_I}<showarrow/><wait 3/> <hidearrow/><playsound pichoop/>",
-)
-director.hide_text_box()
-director.set_left_character_sprite(get_sprite_location("phoenix", "sweating-idle"))
-director.pan_to_left()
-director.text_box(
-    "Phoenix",
-    f"{B_M}{SPR_PHX_SWEAT_T}<blue>(cool great thanks im so happy)</blue>{SPR_PHX_SWEAT_I}{B_ST} <showarrow/><wait 3/>.<hidearrow/><playsound pichoop/>",
-)
-director.hide_text_box()
+director.set_current_pages(test_dialogue)
 director.render_movie(-15)
