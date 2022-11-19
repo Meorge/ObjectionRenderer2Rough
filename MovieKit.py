@@ -381,7 +381,7 @@ class Director:
         audio_stream = ffmpeg.input(f"{temp_folder_name}.mp3")
 
         stream = ffmpeg.concat(video_stream, audio_stream, v=1, a=1)
-        stream = ffmpeg.output(stream, f"{temp_folder_name}.mp4", vcodec='mpeg4')
+        stream = ffmpeg.output(stream, f"{temp_folder_name}.mp4", vcodec='h264', acodec='aac', pix_fmt='yuv420p')
         stream = ffmpeg.overwrite_output(stream)
         ffmpeg.run(stream)
 
