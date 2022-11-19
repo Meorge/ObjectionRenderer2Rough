@@ -8,12 +8,14 @@ from MovieKit import (
 )
 from math_helpers import ease_in_out_cubic
 from PIL import Image, ImageDraw, ImageFont
-from parse_tags import DialoguePage, get_rich_boxes, DialogueTextChunk, DialogueAction, DialogueTextLineBreak
+from parse_tags import DialoguePage, DialogueTextChunk, DialogueAction, DialogueTextLineBreak
 from font_tools import get_best_font
 from font_constants import TEXT_COLORS, FONT_ARRAY
 from typing import Callable, Optional
 from os.path import exists
 from shlex import split
+from math import cos, sin, pi
+from random import random
 
 class NameBox(SceneObject):
     def __init__(self, parent: SceneObject, pos: tuple[int, int, int]):
@@ -95,13 +97,12 @@ class DialogueBox(SceneObject):
 
         self.on_complete: Callable[[], None] = None
 
-    def update(self, delta):
-        ...
-
     def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
         if self.page is None:
             return
 
+        # x, y, _ = self.get_absolute_position()
+        x, y = self.x, self.y
         line_no = 0
         x_offset = 220 if self.use_rtl else 0
         for command in self.page.commands:
@@ -112,8 +113,8 @@ class DialogueBox(SceneObject):
                 text_str = command.text[:command.position]
                 drawing_args = {
                     "xy": (
-                        10 + self.x + x_offset,
-                        4 + self.y + (self.font_size) * line_no,
+                        10 + x + x_offset,
+                        4 + y + (self.font_size) * line_no,
                     ),
                     "text": text_str,
                     "fill": (255, 0, 255),
@@ -184,14 +185,65 @@ class ExclamationObject(ImageObject):
             "offset": self.director.time
         })
 
+class ShakerObject(SceneObject):
+    magnitude: float = 0.0
+    remaining: float = 0.0
+    def start_shaking(self, magnitude, duration):
+        self.magnitude = magnitude
+        self.remaining = duration
+
+    def update(self, delta):
+        self.remaining -= delta
+        if self.remaining > 0:
+            angle = random() * 2 * pi
+            x_offset = int(cos(angle) * self.magnitude)
+            y_offset = int(sin(angle) * self.magnitude)
+            self.set_x(x_offset)
+            self.set_y(y_offset)
+        else:
+            self.remaining = 0
+            self.magnitude = 0
+            self.set_x(0)
+            self.set_y(0)
+
+class ColorOverlayObject(SceneObject):
+    color: tuple[int, int, int] = (0, 0, 0)
+    remaining: float = 0.0
+    def start_color(self, color, duration):
+        self.color = color
+        self.remaining = duration
+
+    def update(self, delta):
+        self.remaining -= delta
+        if self.remaining < 0:
+            self.remaining = 0
+
+    def render(self, img: Image.Image, ctx: ImageDraw.ImageDraw):
+        if self.remaining > 0:
+            ctx.rectangle(xy=(0, 0, img.width, img.height), fill=self.color)
+
+
 class AceAttorneyDirector(Director):
     def __init__(self, fps: float = 30):
         super().__init__(None, fps)
 
         self.root = SceneObject(name="Root")
 
-        self.bg = ImageObject(
+        self.white_flash = ColorOverlayObject(
             parent=self.root,
+            name="White Flash Overlay",
+            pos=(0,0,30)
+        )
+        self.white_flash.color = (255, 255, 255)
+
+        self.bg_shaker = ShakerObject(
+            parent=self.root,
+            name="Background Shaker",
+            pos=(0, 0, 0)
+        )
+
+        self.bg = ImageObject(
+            parent=self.bg_shaker,
             name="Background",
             pos=(0, 0, 0),
             filepath="new_assets/bg/bg_main.png",
@@ -211,12 +263,18 @@ class AceAttorneyDirector(Director):
             filepath="new_assets/character_sprites/edgeworth/edgeworth-normal-idle.gif",
         )
 
+        self.textbox_shaker = ShakerObject(
+            parent=self.root,
+            name="Text Box Shaker",
+            pos=(0,0,0)
+        )
+
         self.exclamation = ExclamationObject(
             parent=self.root,
             director=self
         )
 
-        self.textbox = DialogueBox(parent=self.root, director=self)
+        self.textbox = DialogueBox(parent=self.textbox_shaker, director=self)
 
         self.scene = Scene(256, 192, self.root)
 
@@ -323,6 +381,18 @@ class AceAttorneyDirector(Director):
                         "path": f"new_assets/sound/sfx-{sound_path}.wav",
                         "offset": self.time
                     })
+                    current_dialogue_obj.completed = True
+
+                case ["shake", magnitude_str, duration_str]:
+                    magnitude = float(magnitude_str)
+                    duration = float(duration_str)
+                    self.bg_shaker.start_shaking(magnitude, duration)
+                    self.textbox_shaker.start_shaking(magnitude, duration)
+                    current_dialogue_obj.completed = True
+
+                case ["flash", duration_str]:
+                    duration = float(duration_str)
+                    self.white_flash.start_color((255,255,255), duration)
                     current_dialogue_obj.completed = True
 
                 case ["music", "start", music_name]:
@@ -457,7 +527,6 @@ class AceAttorneyDirector(Director):
 def get_sprite_location(character: str, emotion: str):
     return f"new_assets/character_sprites/{character}/{character}-{emotion}.gif"
 
-
 def get_sprite_tag(location: str, character: str, emotion: str):
     return f"<sprite {location} {get_sprite_location(character, emotion)}/>"
 
@@ -477,24 +546,11 @@ SLAM_PHX = B_ST + "<deskslam phoenix/><wait 0.8/>"
 SLAM_EDW = B_ST + "<deskslam edgeworth/><wait 0.8/>"
 
 OBJ_PHX = B_ST + "<bubble objection phoenix/><wait 0.8/>"
+OBJ_EDW = B_ST + "<bubble objection edgeworth/><wait 0.8/>"
 HDI_PHX = B_ST + "<bubble holdit phoenix/><wait 0.8/>"
 
 END_BOX = "<showarrow/><wait 2/><hidearrow/><sound pichoop/>"
 
-test_dialogue_1 = f"<nametag Phoenix right/><music start cross-moderato/><showbox/>{SPR_PHX_NORMAL_T}I am going to <red>slam the desk</red>!" + \
-    f"{SPR_PHX_NORMAL_I}<wait 0.25/>{OBJ_PHX}" + \
-    f"{SLAM_PHX}{SPR_PHX_NORMAL_T} I just did it!{SPR_PHX_NORMAL_I}{HDI_PHX}" + \
-    f" {SPR_PHX_NORMAL_T}Did you see that?{SPR_PHX_NORMAL_I}<wait 0.5/>" + \
-    f" {SPR_PHX_NORMAL_T}<green>Was i cool?</green>{SPR_PHX_NORMAL_I}{END_BOX}<hidebox/><wait 0.5/>"
-
-test_dialogue_2 = f"<pan right/><wait 1/><nametag \"Mr edge worth\"/><showbox/>{SPR_EDW_NORMAL_T}Yes, I saw it.{SPR_EDW_NORMAL_I}<wait 0.1/> " + \
-    f"{SPR_EDW_NORMAL_T}But it was not very impressive.{SPR_EDW_NORMAL_I}<wait 0.15/> " + \
-    f"{SPR_EDW_NORMAL_T}Look, I can do the same thing.{SLAM_EDW} {SPR_EDW_NORMAL_T}See?{SPR_EDW_NORMAL_I}{END_BOX}"
-
-
-pages: list[DialoguePage] = []
-pages.extend(get_rich_boxes(test_dialogue_1))
-pages.extend(get_rich_boxes(test_dialogue_2))
-director = AceAttorneyDirector()
-director.set_current_pages(pages)
-director.render_movie(-15)
+SHAKE = "<shake 3 0.3/>"
+S_DRAMAPOUND = f"<sound dramapound/><flash 0.15/>{SHAKE}"
+S_SMACK = f"<sound smack/><flash 0.15/>{SHAKE}"
